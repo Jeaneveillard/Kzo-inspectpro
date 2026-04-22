@@ -1,4 +1,4 @@
-﻿document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     
     // --- 0. Sécurité et Utilitaires ---
     
@@ -39,6 +39,342 @@
     // Initialiser les objets de commentaires si absents
     if (!inspectionData.comments) inspectionData.comments = {};
     if (!inspectionData.sectionComments) inspectionData.sectionComments = {};
+    if (!inspectionData.fieldStates) inspectionData.fieldStates = {};
+    if (!inspectionData.sectionPhotos) inspectionData.sectionPhotos = {};
+
+    // ============================================================
+    //  PROXY MULTI-UNITÉS
+    //  Redirige inspectionData.fieldStates vers l'unité active
+    //  si le mode multi-unités est activé. Transparent pour tout
+    //  le code existant.
+    // ============================================================
+    // Sauvegarder les données initiales (pré-multi-unités) dans unit_1
+    const _initialFieldStates = { ...inspectionData.fieldStates };
+    const _initialComments = { ...inspectionData.comments };
+    const _initialSectionComments = { ...inspectionData.sectionComments };
+    const _initialSectionPhotos = { ...inspectionData.sectionPhotos };
+
+    // ============================================================
+    //  SYSTÈME MULTI-UNITÉS (Duplex, Triplex, Condo, etc.)
+    // ============================================================
+    // Types qui activent le mode multi-unités automatiquement
+    const MULTI_UNIT_TYPES = ['Duplex', 'Triplex', 'Condo / Appartement', 'Maison de ville (Townhouse)'];
+
+    // Initialisation des unités
+    if (!inspectionData.units) {
+        inspectionData.units = [
+            { 
+                id: 'unit_1', 
+                name: 'Unité 1', 
+                fieldStates: _initialFieldStates || {}, 
+                comments: _initialComments || {}, 
+                sectionComments: _initialSectionComments || {}, 
+                sectionPhotos: _initialSectionPhotos || {} 
+            }
+        ];
+    }
+    if (typeof inspectionData.currentUnitId === 'undefined') {
+        inspectionData.currentUnitId = 'unit_1';
+    }
+
+    // ============================================================
+    //  REDIRECTION AUTOMATIQUE vers l'unité active
+    //  Remplace fieldStates/comments/etc par des proxies qui
+    //  redirigent vers l'unité active dès qu'on est multi-unités.
+    //  Compatible avec tout le code existant — aucune modification
+    //  nécessaire ailleurs dans app.js.
+    // ============================================================
+    function _getActiveUnit() {
+        return inspectionData.units.find(u => u.id === inspectionData.currentUnitId) || inspectionData.units[0];
+    }
+
+    // Propriétés dynamiques sur inspectionData
+    Object.defineProperty(inspectionData, 'fieldStates', {
+        get() {
+            const u = _getActiveUnit();
+            if (!u.fieldStates) u.fieldStates = {};
+            return u.fieldStates;
+        },
+        set(v) {
+            const u = _getActiveUnit();
+            u.fieldStates = v;
+        },
+        configurable: true
+    });
+
+    Object.defineProperty(inspectionData, 'comments', {
+        get() {
+            const u = _getActiveUnit();
+            if (!u.comments) u.comments = {};
+            return u.comments;
+        },
+        set(v) {
+            const u = _getActiveUnit();
+            u.comments = v;
+        },
+        configurable: true
+    });
+
+    Object.defineProperty(inspectionData, 'sectionComments', {
+        get() {
+            const u = _getActiveUnit();
+            if (!u.sectionComments) u.sectionComments = {};
+            return u.sectionComments;
+        },
+        set(v) {
+            const u = _getActiveUnit();
+            u.sectionComments = v;
+        },
+        configurable: true
+    });
+
+    Object.defineProperty(inspectionData, 'sectionPhotos', {
+        get() {
+            const u = _getActiveUnit();
+            if (!u.sectionPhotos) u.sectionPhotos = {};
+            return u.sectionPhotos;
+        },
+        set(v) {
+            const u = _getActiveUnit();
+            u.sectionPhotos = v;
+        },
+        configurable: true
+    });
+
+    // Retourner l'unité active
+    function getCurrentUnit() {
+        return inspectionData.units.find(u => u.id === inspectionData.currentUnitId) || inspectionData.units[0];
+    }
+
+    // Retourner les fieldStates de l'unité active (avec fallback)
+    function getActiveFieldStates() {
+        const unit = getCurrentUnit();
+        if (!unit.fieldStates) unit.fieldStates = {};
+        return unit.fieldStates;
+    }
+
+    function getActiveComments() {
+        const unit = getCurrentUnit();
+        if (!unit.comments) unit.comments = {};
+        return unit.comments;
+    }
+
+    function getActiveSectionComments() {
+        const unit = getCurrentUnit();
+        if (!unit.sectionComments) unit.sectionComments = {};
+        return unit.sectionComments;
+    }
+
+    function getActiveSectionPhotos() {
+        const unit = getCurrentUnit();
+        if (!unit.sectionPhotos) unit.sectionPhotos = {};
+        return unit.sectionPhotos;
+    }
+
+    // Vérifier si le bâtiment est multi-unités selon prop_type
+    function isMultiUnitBuilding() {
+        const propType = document.getElementById('prop_type')?.value || inspectionData.fieldStates?.prop_type_val || '';
+        return MULTI_UNIT_TYPES.includes(propType);
+    }
+
+    // Ajouter une nouvelle unité
+    function addUnit() {
+        const newNum = inspectionData.units.length + 1;
+        const defaultName = prompt('Nom de la nouvelle unité :', `Unité ${newNum}`);
+        if (!defaultName) return;
+        const newUnit = {
+            id: 'unit_' + Date.now(),
+            name: defaultName,
+            fieldStates: {},
+            comments: {},
+            sectionComments: {},
+            sectionPhotos: {}
+        };
+        inspectionData.units.push(newUnit);
+        inspectionData.currentUnitId = newUnit.id;
+        saveAppState();
+        renderUnitTabs();
+        renderSection(currentSectionIndex);
+    }
+
+    // Renommer une unité
+    function renameUnit(unitId) {
+        const unit = inspectionData.units.find(u => u.id === unitId);
+        if (!unit) return;
+        const newName = prompt('Renommer l\'unité :', unit.name);
+        if (newName && newName.trim()) {
+            unit.name = newName.trim();
+            saveAppState();
+            renderUnitTabs();
+        }
+    }
+
+    // Supprimer une unité
+    function deleteUnit(unitId) {
+        if (inspectionData.units.length <= 1) {
+            alert('⚠️ Impossible de supprimer la dernière unité.');
+            return;
+        }
+        const unit = inspectionData.units.find(u => u.id === unitId);
+        if (!unit) return;
+        if (!confirm(`Supprimer "${unit.name}" ? Toutes les données de cette unité seront perdues.`)) return;
+        inspectionData.units = inspectionData.units.filter(u => u.id !== unitId);
+        if (inspectionData.currentUnitId === unitId) {
+            inspectionData.currentUnitId = inspectionData.units[0].id;
+        }
+        saveAppState();
+        renderUnitTabs();
+        renderSection(currentSectionIndex);
+    }
+
+    // Changer d'unité active
+    function switchUnit(unitId) {
+        inspectionData.currentUnitId = unitId;
+        saveAppState();
+        renderUnitTabs();
+        renderSection(currentSectionIndex);
+    }
+
+    // Rendre la barre de tabs des unités
+    function renderUnitTabs() {
+        let tabsBar = document.getElementById('unitTabsBar');
+        const multiMode = isMultiUnitBuilding();
+
+        // Créer la barre si elle n'existe pas
+        if (!tabsBar) {
+            tabsBar = document.createElement('div');
+            tabsBar.id = 'unitTabsBar';
+            tabsBar.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: linear-gradient(135deg, #1e40af, #1A56DB); border-bottom: 2px solid #0D3B6E; overflow-x: auto; flex-wrap: nowrap;';
+            const mainContent = document.querySelector('.main-content') || document.querySelector('#sectionContent')?.parentElement;
+            const topBar = document.querySelector('.top-bar');
+            if (mainContent && topBar) {
+                mainContent.insertBefore(tabsBar, mainContent.firstChild);
+            } else if (topBar) {
+                topBar.parentNode.insertBefore(tabsBar, topBar.nextSibling);
+            }
+        }
+
+        // Masquer la barre si pas multi-unités
+        if (!multiMode) {
+            tabsBar.style.display = 'none';
+            // Assurer qu'on est sur une unité valide (reset à unit_1)
+            if (inspectionData.units.length > 1) {
+                inspectionData.units = [inspectionData.units[0]];
+                inspectionData.currentUnitId = inspectionData.units[0].id;
+            }
+            return;
+        }
+
+        tabsBar.style.display = 'flex';
+        tabsBar.innerHTML = '';
+
+        // Label
+        const label = document.createElement('span');
+        label.innerHTML = '🏠 <strong>Unités :</strong>';
+        label.style.cssText = 'color: white; font-size: 0.9rem; margin-right: 4px; flex-shrink: 0; white-space: nowrap;';
+        tabsBar.appendChild(label);
+
+        // Tabs des unités
+        inspectionData.units.forEach(unit => {
+            const isActive = unit.id === inspectionData.currentUnitId;
+            const tab = document.createElement('div');
+            tab.style.cssText = `
+                display: flex; align-items: center; gap: 6px;
+                padding: 7px 12px; border-radius: 8px;
+                background: ${isActive ? 'white' : 'rgba(255,255,255,0.15)'};
+                color: ${isActive ? '#1e40af' : 'white'};
+                font-weight: ${isActive ? '700' : '500'};
+                font-size: 0.9rem;
+                cursor: pointer;
+                transition: all 0.2s;
+                flex-shrink: 0;
+                white-space: nowrap;
+                box-shadow: ${isActive ? '0 2px 8px rgba(0,0,0,0.2)' : 'none'};
+            `;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = unit.name;
+            nameSpan.onclick = () => switchUnit(unit.id);
+            tab.appendChild(nameSpan);
+
+            if (isActive) {
+                // Bouton renommer
+                const renameBtn = document.createElement('button');
+                renameBtn.innerHTML = '✏️';
+                renameBtn.title = 'Renommer';
+                renameBtn.style.cssText = 'background: none; border: none; cursor: pointer; padding: 0 4px; font-size: 0.85rem;';
+                renameBtn.onclick = (e) => { e.stopPropagation(); renameUnit(unit.id); };
+                tab.appendChild(renameBtn);
+
+                // Bouton supprimer (seulement si +1 unité)
+                if (inspectionData.units.length > 1) {
+                    const delBtn = document.createElement('button');
+                    delBtn.innerHTML = '🗑️';
+                    delBtn.title = 'Supprimer';
+                    delBtn.style.cssText = 'background: none; border: none; cursor: pointer; padding: 0 4px; font-size: 0.85rem;';
+                    delBtn.onclick = (e) => { e.stopPropagation(); deleteUnit(unit.id); };
+                    tab.appendChild(delBtn);
+                }
+            }
+
+            tabsBar.appendChild(tab);
+        });
+
+        // Bouton ajouter
+        const addBtn = document.createElement('button');
+        addBtn.innerHTML = '+ Ajouter une unité';
+        addBtn.style.cssText = `
+            background: #059669; color: white; border: none;
+            padding: 7px 14px; border-radius: 8px;
+            font-size: 0.85rem; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; flex-shrink: 0; white-space: nowrap;
+            margin-left: auto;
+        `;
+        addBtn.onmouseenter = () => addBtn.style.background = '#047857';
+        addBtn.onmouseleave = () => addBtn.style.background = '#059669';
+        addBtn.onclick = addUnit;
+        tabsBar.appendChild(addBtn);
+
+        // Indicateur du nombre total
+        const badge = document.createElement('span');
+        badge.textContent = `${inspectionData.units.length} unité${inspectionData.units.length > 1 ? 's' : ''}`;
+        badge.style.cssText = 'background: rgba(255,255,255,0.2); color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; white-space: nowrap;';
+        tabsBar.appendChild(badge);
+
+        // Bouton rapport rapide pour l'unité active
+        const reportBtn = document.createElement('button');
+        reportBtn.innerHTML = '📄 Rapport de cette unité';
+        reportBtn.title = `Générer le rapport de ${_getActiveUnit().name}`;
+        reportBtn.style.cssText = `
+            background: #eab308; color: #0f172a; border: none;
+            padding: 7px 14px; border-radius: 8px;
+            font-size: 0.85rem; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; flex-shrink: 0; white-space: nowrap;
+        `;
+        reportBtn.onmouseenter = () => { reportBtn.style.background = '#ca8a04'; reportBtn.style.transform = 'translateY(-1px)'; };
+        reportBtn.onmouseleave = () => { reportBtn.style.background = '#eab308'; reportBtn.style.transform = 'translateY(0)'; };
+        reportBtn.onclick = () => generateFinalReport(_getActiveUnit().id);
+        tabsBar.appendChild(reportBtn);
+    }
+
+    // Écouter les changements du champ prop_type pour activer/désactiver le mode multi-unités
+    document.addEventListener('change', (e) => {
+        if (e.target && e.target.id === 'prop_type') {
+            renderUnitTabs();
+            // Notification à l'utilisateur
+            if (isMultiUnitBuilding()) {
+                const msg = document.createElement('div');
+                msg.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #059669; color: white; padding: 14px 20px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 9999; font-weight: 600; font-size: 0.95rem; animation: slideIn 0.3s;';
+                msg.innerHTML = '✅ Mode multi-unités activé<br><span style="font-weight:400; font-size:0.85rem;">Utilisez la barre en haut pour gérer les unités</span>';
+                document.body.appendChild(msg);
+                setTimeout(() => msg.remove(), 4000);
+            }
+        }
+    });
+
+    // ============================================================
+    //  FIN SYSTÈME MULTI-UNITÉS
+    // ============================================================
 
     // --- Configuration Entreprise Dynamique ---
     window.AppCompanyProfile = {
@@ -287,48 +623,104 @@
                 fieldGroup.className = 'field-group';
 
                 if (field.type === 'checkbox') {
-                    // Custom Checkbox
-                    const label = document.createElement('label');
-                    label.className = 'checkbox-btn';
-                    
+                    // --- Conteneur principal de l'item ---
+                    const itemWrapper = document.createElement('div');
+                    itemWrapper.style.cssText = 'border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: #f8fafc; transition: all 0.2s;';
+
+                    // --- Ligne du haut : état + label ---
+                    const topRow = document.createElement('div');
+                    topRow.style.cssText = 'display: flex; align-items: flex-start; gap: 12px;';
+
+                    // Menu déroulant d'état
+                    const stateSelect = document.createElement('select');
+                    stateSelect.id = field.id + '_state';
+                    stateSelect.style.cssText = 'padding: 6px 10px; border-radius: 8px; border: 2px solid #e2e8f0; font-size: 0.88rem; font-weight: 600; cursor: pointer; background: white; min-width: 160px; flex-shrink: 0;';
+
+                    const states = [
+                        { value: '', label: '— Sélectionner —', color: '#94a3b8', bg: '#f8fafc' },
+                        { value: 'conforme', label: '✅ Conforme', color: '#059669', bg: '#ecfdf5' },
+                        { value: 'surveiller', label: '⚠️ À surveiller', color: '#d97706', bg: '#fffbeb' },
+                        { value: 'defaut', label: '❌ Défaut', color: '#dc2626', bg: '#fef2f2' },
+                        { value: 'na', label: '➖ Non applicable', color: '#64748b', bg: '#f1f5f9' }
+                    ];
+
+                    states.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s.value;
+                        opt.textContent = s.label;
+                        stateSelect.appendChild(opt);
+                    });
+
+                    // Restaurer état sauvegardé (depuis unité active)
+                    const activeStates = getActiveFieldStates();
+                    if (activeStates[field.id]) {
+                        stateSelect.value = activeStates[field.id];
+                    }
+
+                    // Texte du label
+                    const labelSpan = document.createElement('span');
+                    labelSpan.textContent = field.label;
+                    labelSpan.style.cssText = 'font-size: 0.92rem; line-height: 1.5; color: #334155; flex: 1; padding-top: 6px;';
+
+                    topRow.appendChild(stateSelect);
+                    topRow.appendChild(labelSpan);
+                    itemWrapper.appendChild(topRow);
+
+                    // Input hidden pour compatibilité rapport (checked = défaut)
                     const input = document.createElement('input');
                     input.type = 'checkbox';
                     input.id = field.id;
-                    
-                    const content = document.createElement('div');
-                    content.className = 'checkbox-content';
-                    const labelSpan = document.createElement('span');
-                    labelSpan.textContent = field.label;
-                    content.appendChild(labelSpan);
-                    
-                    // Vision Button
+                    input.style.display = 'none';
+
+                    // Bouton analyser photo
+                    const visionRow = document.createElement('div');
+                    visionRow.style.cssText = 'margin-top: 8px; display: flex; gap: 8px; align-items: center;';
                     const visionBtn = document.createElement('button');
                     visionBtn.className = 'vision-ai-btn';
                     visionBtn.innerHTML = '📷 Analyser Photo';
-                    visionBtn.onclick = (e) => {
-                        e.preventDefault();
-                        openPhotoModal(field);
-                    };
+                    visionBtn.onclick = (e) => { e.preventDefault(); openPhotoModal(field); };
+                    visionRow.appendChild(visionBtn);
+                    itemWrapper.appendChild(visionRow);
+                    itemWrapper.appendChild(input);
 
-                    content.appendChild(document.createElement('br'));
-                    content.appendChild(visionBtn);
+                    // Zone IA (apparaît si défaut)
+                    const aiZone = document.createElement('div');
+                    aiZone.id = field.id + '_ai';
+                    itemWrapper.appendChild(aiZone);
 
-                    label.appendChild(input);
-                    label.appendChild(content);
+                    // Appliquer couleur selon état sélectionné
+                    function applyState(val) {
+                        const s = states.find(x => x.value === val) || states[0];
+                        itemWrapper.style.borderColor = s.color === '#94a3b8' ? '#e2e8f0' : s.color;
+                        itemWrapper.style.background = s.bg;
+                        stateSelect.style.borderColor = s.color;
+                        stateSelect.style.color = s.color;
 
-                    // AI Generation on Click
-                    input.addEventListener('change', (e) => {
-                        if (e.target.checked) {
-                            label.classList.add('checked');
-                            generateAIContext(field, fieldGroup);
+                        // Sync checkbox caché pour le rapport
+                        input.checked = (val === 'defaut');
+
+                        // IA uniquement si défaut
+                        if (val === 'defaut') {
+                            generateAIContext(field, aiZone);
                         } else {
-                            label.classList.remove('checked');
-                            const aiBox = fieldGroup.querySelector('.ai-box');
-                            if(aiBox) aiBox.remove();
+                            aiZone.innerHTML = '';
                         }
-                    });
 
-                    fieldGroup.appendChild(label);
+                        // Sauvegarder dans l'unité active
+                        const activeStates = getActiveFieldStates();
+                        activeStates[field.id] = val;
+                        saveAppState();
+                    }
+
+                    // Appliquer état initial si sauvegardé (depuis unité active)
+                    const savedState = getActiveFieldStates()[field.id];
+                    if (savedState) {
+                        applyState(savedState);
+                    }
+
+                    stateSelect.addEventListener('change', () => applyState(stateSelect.value));
+
+                    fieldGroup.appendChild(itemWrapper);
 
                 // --- Multi-Client Names Field ---
                 } else if (field.type === 'clients') {
@@ -597,7 +989,10 @@
                     btn.style.marginTop = '12px';
                     btn.textContent = field.label;
                     btn.addEventListener('click', () => {
-                        if (field.id === 'rap_generate') generateFinalReport();
+                        if (field.id === 'rap_generate') {
+                            if (isMultiUnitBuilding() && inspectionData.units.length > 1) showUnitReportSelector();
+                            else generateFinalReport();
+                        }
                     });
                     fieldGroup.appendChild(btn);
                 }
@@ -605,9 +1000,10 @@
                 div.appendChild(fieldGroup);
             });
 
-            // --- Multi-Photo Gallery for each sub-section ---
-            if (!inspectionData.sectionPhotos[sub.id]) {
-                inspectionData.sectionPhotos[sub.id] = [];
+            // --- Multi-Photo Gallery for each sub-section (lié à l'unité active) ---
+            const activePhotosStore = getActiveSectionPhotos();
+            if (!activePhotosStore[sub.id]) {
+                activePhotosStore[sub.id] = [];
             }
 
             const galleryContainer = document.createElement('div');
@@ -624,7 +1020,8 @@
             
             const renderGallery = () => {
                 grid.innerHTML = '';
-                inspectionData.sectionPhotos[sub.id].forEach((photoObj, i) => {
+                const photos = getActiveSectionPhotos()[sub.id] || [];
+                photos.forEach((photoObj, i) => {
                     const wrap = document.createElement('div');
                     wrap.style.cssText = 'position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);';
                     
@@ -637,7 +1034,8 @@
                     delBtn.title = 'Supprimer cette photo';
                     delBtn.style.cssText = 'position: absolute; top: 4px; right: 4px; background: rgba(220, 38, 38, 0.9); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;';
                     delBtn.onclick = () => {
-                        inspectionData.sectionPhotos[sub.id].splice(i, 1);
+                        getActiveSectionPhotos()[sub.id].splice(i, 1);
+                        saveAppState();
                         renderGallery();
                     };
                     
@@ -670,7 +1068,10 @@
                     const check = validateFile(file);
                     if (check.valid) {
                         const url = URL.createObjectURL(file);
-                        inspectionData.sectionPhotos[sub.id].push({ url: url });
+                        const store = getActiveSectionPhotos();
+                        if (!store[sub.id]) store[sub.id] = [];
+                        store[sub.id].push({ url: url });
+                        saveAppState();
                     } else {
                         alert('⚠️ ' + check.error);
                     }
@@ -712,7 +1113,7 @@
                     <input type="hidden" id="comment_sev_${sub.id}" value="">
                 </div>
                 <textarea id="comment_txt_${sub.id}" placeholder="Observations de l'inspecteur pour cette sous-section..."
-                    style="width:100%; min-height:80px; padding:10px; border:1px solid #fed7aa; border-radius:6px; font-size:0.9rem; font-family:inherit; resize:vertical; background:white;">${(inspectionData.comments && inspectionData.comments[sub.id]) ? inspectionData.comments[sub.id].text : ''}</textarea>
+                    style="width:100%; min-height:80px; padding:10px; border:1px solid #fed7aa; border-radius:6px; font-size:0.9rem; font-family:inherit; resize:vertical; background:white;">${(getActiveComments()[sub.id]) ? getActiveComments()[sub.id].text || '' : ''}</textarea>
             `;
             div.appendChild(subCommentBlock);
 
@@ -720,38 +1121,39 @@
             subCommentBlock.querySelectorAll('.sev-btn').forEach(btn => {
                 const targetId = btn.dataset.target;
                 const sevInput = subCommentBlock.querySelector('#' + targetId);
-                // Restore saved state
-                if (inspectionData.comments && inspectionData.comments[sub.id] && inspectionData.comments[sub.id].severity === btn.dataset.sev) {
+                // Restore saved state (unité active)
+                const activeC = getActiveComments();
+                if (activeC[sub.id] && activeC[sub.id].severity === btn.dataset.sev) {
                     btn.style.color = 'white';
                     const colors = { urgent: '#ef4444', majeur: '#f59e0b', mineur: '#eab308', ok: '#10b981' };
                     btn.style.background = colors[btn.dataset.sev] || '#64748b';
                     sevInput.value = btn.dataset.sev;
                 }
                 btn.addEventListener('click', () => {
-                    // Reset all
                     subCommentBlock.querySelectorAll('.sev-btn').forEach(b => {
                         b.style.background = 'white';
                         const colorsReset = { urgent: '#ef4444', majeur: '#b45309', mineur: '#854d0e', ok: '#065f46' };
                         b.style.color = colorsReset[b.dataset.sev] || '#64748b';
                     });
-                    // Activate selected
                     const colors = { urgent: '#ef4444', majeur: '#f59e0b', mineur: '#eab308', ok: '#10b981' };
                     btn.style.background = colors[btn.dataset.sev] || '#64748b';
                     btn.style.color = 'white';
                     sevInput.value = btn.dataset.sev;
-                    // Save
-                    if (!inspectionData.comments) inspectionData.comments = {};
-                    if (!inspectionData.comments[sub.id]) inspectionData.comments[sub.id] = {};
-                    inspectionData.comments[sub.id].severity = btn.dataset.sev;
+                    // Sauvegarder dans unité active
+                    const activeCom = getActiveComments();
+                    if (!activeCom[sub.id]) activeCom[sub.id] = {};
+                    activeCom[sub.id].severity = btn.dataset.sev;
+                    saveAppState();
                 });
             });
 
-            // Save text comment on input
+            // Save text comment on input (unité active)
             const subTxtArea = subCommentBlock.querySelector('#comment_txt_' + sub.id);
             subTxtArea.addEventListener('input', () => {
-                if (!inspectionData.comments) inspectionData.comments = {};
-                if (!inspectionData.comments[sub.id]) inspectionData.comments[sub.id] = {};
-                inspectionData.comments[sub.id].text = subTxtArea.value;
+                const activeCom = getActiveComments();
+                if (!activeCom[sub.id]) activeCom[sub.id] = {};
+                activeCom[sub.id].text = subTxtArea.value;
+                saveAppState();
             });
 
             dynamicContent.appendChild(div);
@@ -784,14 +1186,15 @@
                     <input type="hidden" id="sec_sev_${secId}" value="">
                 </div>
                 <textarea id="sec_txt_${secId}" placeholder="Résumé global de l'inspecteur pour cette section..."
-                    style="width:100%; min-height:90px; padding:12px; border:1px solid #93c5fd; border-radius:6px; font-size:0.95rem; font-family:inherit; resize:vertical; background:white;">${(inspectionData.sectionComments && inspectionData.sectionComments[secId]) ? inspectionData.sectionComments[secId].text : ''}</textarea>
+                    style="width:100%; min-height:90px; padding:12px; border:1px solid #93c5fd; border-radius:6px; font-size:0.95rem; font-family:inherit; resize:vertical; background:white;">${(getActiveSectionComments()[secId]) ? getActiveSectionComments()[secId].text || '' : ''}</textarea>
             `;
             dynamicContent.appendChild(secCommentBlock);
 
-            // Wire section severity buttons
+            // Wire section severity buttons (unité active)
             secCommentBlock.querySelectorAll('.sev-btn-sec').forEach(btn => {
                 const sevInput = secCommentBlock.querySelector('#sec_sev_' + secId);
-                if (inspectionData.sectionComments && inspectionData.sectionComments[secId] && inspectionData.sectionComments[secId].severity === btn.dataset.sev) {
+                const activeSC = getActiveSectionComments();
+                if (activeSC[secId] && activeSC[secId].severity === btn.dataset.sev) {
                     btn.style.color = 'white';
                     const colors = { urgent: '#ef4444', majeur: '#f59e0b', mineur: '#eab308', ok: '#10b981' };
                     btn.style.background = colors[btn.dataset.sev] || '#64748b';
@@ -807,17 +1210,19 @@
                     btn.style.background = colors[btn.dataset.sev] || '#64748b';
                     btn.style.color = 'white';
                     sevInput.value = btn.dataset.sev;
-                    if (!inspectionData.sectionComments) inspectionData.sectionComments = {};
-                    if (!inspectionData.sectionComments[secId]) inspectionData.sectionComments[secId] = {};
-                    inspectionData.sectionComments[secId].severity = btn.dataset.sev;
+                    const activeSec = getActiveSectionComments();
+                    if (!activeSec[secId]) activeSec[secId] = {};
+                    activeSec[secId].severity = btn.dataset.sev;
+                    saveAppState();
                 });
             });
 
             const secTxtArea = secCommentBlock.querySelector('#sec_txt_' + secId);
             secTxtArea.addEventListener('input', () => {
-                if (!inspectionData.sectionComments) inspectionData.sectionComments = {};
-                if (!inspectionData.sectionComments[secId]) inspectionData.sectionComments[secId] = {};
-                inspectionData.sectionComments[secId].text = secTxtArea.value;
+                const activeSec = getActiveSectionComments();
+                if (!activeSec[secId]) activeSec[secId] = {};
+                activeSec[secId].text = secTxtArea.value;
+                saveAppState();
             });
         }
 
@@ -838,9 +1243,84 @@
         if(currentSectionIndex < inspectionData.sections.length - 1) { 
             currentSectionIndex++; renderSection(currentSectionIndex); renderNavigation(); 
         } else {
-            generateFinalReport();
+            // Mode multi-unités : demander quelle unité générer
+            if (isMultiUnitBuilding() && inspectionData.units.length > 1) {
+                showUnitReportSelector();
+            } else {
+                generateFinalReport();
+            }
         }
     });
+
+    // Modal de sélection d'unité pour rapport
+    function showUnitReportSelector() {
+        const existing = document.getElementById('unitReportSelector');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'unitReportSelector';
+        overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background: white; border-radius: 16px; padding: 40px; max-width: 500px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);';
+
+        box.innerHTML = `
+            <h2 style="margin: 0 0 12px; color: #0f172a; font-size: 1.5rem;">📄 Générer un rapport</h2>
+            <p style="color: #64748b; margin: 0 0 24px; font-size: 0.95rem;">Sélectionnez l'unité pour laquelle vous voulez générer un rapport. Chaque unité aura son propre rapport complet.</p>
+            <div id="unitReportList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
+            <button id="cancelUnitReport" style="width: 100%; padding: 12px; background: #e2e8f0; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.95rem;">Annuler</button>
+        `;
+
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        const list = box.querySelector('#unitReportList');
+        inspectionData.units.forEach(unit => {
+            // Compter défauts dans cette unité
+            let urg = 0, maj = 0, surv = 0, conf = 0;
+            const fs = unit.fieldStates || {};
+            inspectionData.sections.forEach(section => {
+                if (section.id === 's_cover' || section.id === 's_admin' || section.id === 's_rapport') return;
+                section.subSections.forEach(sub => {
+                    sub.fields.forEach(f => {
+                        if (f.type !== 'checkbox') return;
+                        const s = fs[f.id];
+                        if (s === 'defaut') { const sev = AIAgents.determineSeverity(f.label); if (sev==='URGENT') urg++; else maj++; }
+                        else if (s === 'surveiller') surv++;
+                        else if (s === 'conforme') conf++;
+                    });
+                });
+            });
+
+            const btn = document.createElement('button');
+            btn.style.cssText = 'width: 100%; padding: 16px; background: white; border: 2px solid #e2e8f0; border-radius: 10px; cursor: pointer; text-align: left; transition: all 0.2s;';
+            btn.onmouseenter = () => { btn.style.borderColor = '#1A56DB'; btn.style.background = '#eff6ff'; };
+            btn.onmouseleave = () => { btn.style.borderColor = '#e2e8f0'; btn.style.background = 'white'; };
+            btn.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-weight: 700; color: #0f172a; font-size: 1.05rem;">🏠 ${unit.name}</div>
+                        <div style="font-size: 0.82rem; color: #64748b; margin-top: 4px;">
+                            ${urg > 0 ? `<span style="color:#dc2626;">🔴 ${urg} urgent${urg>1?'s':''}</span>` : ''}
+                            ${maj > 0 ? ` <span style="color:#d97706;">🟠 ${maj} majeur${maj>1?'s':''}</span>` : ''}
+                            ${surv > 0 ? ` <span style="color:#f59e0b;">⚠️ ${surv} à surveiller</span>` : ''}
+                            ${conf > 0 ? ` <span style="color:#059669;">✅ ${conf} conforme${conf>1?'s':''}</span>` : ''}
+                            ${(urg+maj+surv+conf)===0 ? '<em style="color:#94a3b8;">Aucune inspection saisie</em>' : ''}
+                        </div>
+                    </div>
+                    <div style="color: #1A56DB; font-size: 1.5rem;">→</div>
+                </div>
+            `;
+            btn.onclick = () => {
+                overlay.remove();
+                generateFinalReport(unit.id);
+            };
+            list.appendChild(btn);
+        });
+
+        box.querySelector('#cancelUnitReport').onclick = () => overlay.remove();
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    }
 
     // --- 3. Intelligence Artificielle (Simulation Claude) ---
     function generateAIContext(field, container) {
@@ -925,28 +1405,142 @@
     document.getElementById('closeModal').addEventListener('click', () => { modal.classList.remove('open'); });
 
     takePhotoBtn.addEventListener('click', async () => {
-        photoArea.classList.add('taken');
-        photoText.innerHTML = '📸 Photo capturée...<br><br>Traitement par Claude Vision...';
-        takePhotoBtn.style.display = 'none';
-        
-        // Simuler la photo en chargeant une image générique de défaut
-        // Pour les fondations, utilisons un mur en exemple.
-        simulatedImg.src = "https://images.unsplash.com/photo-1518640166946-86927918a3ce?auto=format&fit=crop&q=80&w=500";
-        
-        const result = await AIAgents.analyzePhoto();
-        
-        // Afficher l'image et l'outil de dessin
-        photoText.style.display = 'none';
-        simulatedImg.style.display = 'block';
-        drawCanvas.style.display = 'block';
-        drawToolbar.style.display = 'flex';
-        
-        initCanvas();
+        // Ouvrir le sélecteur de fichier (galerie ou caméra)
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.capture = 'environment'; // Caméra arrière sur mobile
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
 
-        document.getElementById('analysisText').textContent = result.description;
-        document.getElementById('recommendationText').textContent = result.recommendation;
-        aiResultArea.style.display = 'block';
-        applyAiBtn.style.display = 'block';
+        fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const check = validateFile(file);
+            if (!check.valid) { alert('⚠️ ' + check.error); return; }
+
+            photoArea.classList.add('taken');
+            photoText.innerHTML = '📸 Photo chargée...<br><br>⏳ Analyse par Claude Vision...';
+            takePhotoBtn.style.display = 'none';
+
+            // Afficher la photo sélectionnée
+            const url = URL.createObjectURL(file);
+            simulatedImg.src = url;
+            simulatedImg.alt = 'Photo du défaut';
+            photoText.style.display = 'none';
+            simulatedImg.style.display = 'block';
+            drawCanvas.style.display = 'block';
+            drawToolbar.style.display = 'flex';
+            initCanvas();
+
+            // Convertir en base64 pour l'API
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                const base64 = ev.target.result.split(',')[1];
+                const mimeType = file.type;
+
+                // Appel API Claude Vision
+                const apiKey = localStorage.getItem('inspectpro_api_key');
+                const provider = localStorage.getItem('inspectpro_api_provider') || 'anthropic';
+
+                if (!apiKey) {
+                    document.getElementById('analysisText').textContent = "⚠️ Aucune clé API configurée. Cliquez sur ⚙️ dans l'Assistant IA pour ajouter votre clé.";
+                    document.getElementById('recommendationText').textContent = "Configurez votre clé API Claude, Gemini ou OpenAI pour activer l'analyse de photos.";
+                    aiResultArea.style.display = 'block';
+                    return;
+                }
+
+                try {
+                    let analysisText = '';
+                    let recoText = '';
+                    const fieldLabel = currentVisionField ? currentVisionField.label : 'élément inspecté';
+                    const prompt = `Tu es un inspecteur en bâtiment certifié RBQ au Québec. Analyse cette photo dans le contexte suivant : "${fieldLabel}". 
+Décris en 2-3 phrases ce que tu observes visuellement (matériaux, état, signes visibles de défauts ou de conformité).
+Puis donne une recommandation professionnelle concise selon la norme BNQ 3009-500.
+Réponds en français.`;
+
+                    if (provider === 'anthropic') {
+                        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-api-key': apiKey,
+                                'anthropic-version': '2023-06-01',
+                                'anthropic-dangerous-direct-browser-access': 'true'
+                            },
+                            body: JSON.stringify({
+                                model: 'claude-haiku-4-5-20251001',
+                                max_tokens: 500,
+                                messages: [{
+                                    role: 'user',
+                                    content: [
+                                        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+                                        { type: 'text', text: prompt }
+                                    ]
+                                }]
+                            })
+                        });
+                        const data = await resp.json();
+                        const full = data.content?.[0]?.text || 'Analyse non disponible.';
+                        const parts = full.split(/recommandation|Recommandation/i);
+                        analysisText = parts[0].trim();
+                        recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
+
+                    } else if (provider === 'gemini') {
+                        const url2 = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+                        const resp = await fetch(url2, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [
+                                    { inline_data: { mime_type: mimeType, data: base64 } },
+                                    { text: prompt }
+                                ]}]
+                            })
+                        });
+                        const data = await resp.json();
+                        const full = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Analyse non disponible.';
+                        const parts = full.split(/recommandation|Recommandation/i);
+                        analysisText = parts[0].trim();
+                        recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
+
+                    } else if (provider === 'openai') {
+                        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                            body: JSON.stringify({
+                                model: 'gpt-4o',
+                                max_tokens: 500,
+                                messages: [{ role: 'user', content: [
+                                    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+                                    { type: 'text', text: prompt }
+                                ]}]
+                            })
+                        });
+                        const data = await resp.json();
+                        const full = data.choices?.[0]?.message?.content || 'Analyse non disponible.';
+                        const parts = full.split(/recommandation|Recommandation/i);
+                        analysisText = parts[0].trim();
+                        recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
+                    }
+
+                    document.getElementById('analysisText').textContent = analysisText;
+                    document.getElementById('recommendationText').textContent = recoText;
+                    aiResultArea.style.display = 'block';
+                    applyAiBtn.style.display = 'block';
+
+                } catch (err) {
+                    document.getElementById('analysisText').textContent = '❌ Erreur lors de l\'analyse : ' + err.message;
+                    document.getElementById('recommendationText').textContent = 'Vérifiez votre connexion et votre clé API.';
+                    aiResultArea.style.display = 'block';
+                }
+            };
+            reader.readAsDataURL(file);
+            document.body.removeChild(fileInput);
+        };
+
+        fileInput.click();
     });
 
     // --- Drawing Logic ---
@@ -1028,11 +1622,11 @@
     drawCanvas.addEventListener('touchend', stopDraw);
 
     applyAiBtn.addEventListener('click', () => {
-        // Auto check the box and trigger narrative
-        const checkbox = document.getElementById(currentVisionField.id);
-        if(checkbox && !checkbox.checked) {
-            checkbox.checked = true;
-            checkbox.dispatchEvent(new Event('change'));
+        // Appliquer le résultat de l'analyse au rapport — marquer comme défaut dans l'unité active
+        if (currentVisionField) {
+            const activeStates = getActiveFieldStates();
+            activeStates[currentVisionField.id] = 'defaut';
+            saveAppState();
         }
         modal.classList.remove('open');
     });
@@ -1153,237 +1747,418 @@
     chatInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendChatMessage(); });
 
     // --- 6. Génération du Rapport Final ---
-    function generateFinalReport() {
+    function generateFinalReport(unitId) {
         if (typeof BOILERPLATE === 'undefined') {
             alert("Erreur: Impossible de charger le contenu légal (boilerplate.js manquant).");
             return;
         }
 
+        // Validation minimale
+        const clientName = sanitizeHTML(inspectionData.clientInfo.name) || '';
+        const address = sanitizeHTML(inspectionData.clientInfo.address) || '';
+        if (!clientName || !address) {
+            alert('⚠️ Veuillez remplir au minimum le nom du client et l\'adresse du bâtiment avant de générer le rapport (Section 1).');
+            return;
+        }
+
+        // Déterminer quelle unité utiliser
+        const targetUnit = unitId
+            ? inspectionData.units.find(u => u.id === unitId)
+            : getCurrentUnit();
+        const unitFieldStates = targetUnit.fieldStates || {};
+        const unitComments = targetUnit.comments || {};
+        const unitSectionComments = targetUnit.sectionComments || {};
+        const unitSectionPhotos = targetUnit.sectionPhotos || {};
+        const unitName = targetUnit.name || '';
+        const isMultiMode = isMultiUnitBuilding() && inspectionData.units.length > 1;
+
         const reportModal = document.getElementById('reportModal');
         const reportContent = document.getElementById('reportContent');
-        const clientName = sanitizeHTML(inspectionData.clientInfo.name) || 'Client inconnu';
-        const address = sanitizeHTML(inspectionData.clientInfo.address) || 'Adresse à spécifier';
         const prixElement = document.getElementById('prix_inspection');
-        const prix = prixElement ? prixElement.value : "500"; // fallback
+        const prix = prixElement ? prixElement.value : "500";
         const normeElement = document.getElementById('norme_pratique');
-        const norme = (normeElement && normeElement.value) ? normeElement.value : "Réseau IBC (Inspecteurs en Bâtiment Certifiés)";
+        const norme = (normeElement && normeElement.value) ? normeElement.value : "BNQ 3009-500 (RBQ)";
         const signatureUrl = inspectionData.clientInfo.signatureUrl || null;
         const sealUrl = inspectionData.clientInfo.sealUrl || null;
-        
-        let html = `
-            <!-- COUVERTURE -->
-            <div class="page-break" style="text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 800px;">
-                <h1 style="font-size: 3rem; color: #0f172a; margin-bottom: 20px; font-weight: 800;">RAPPORT D'INSPECTION DE BÂTIMENT</h1>
-                <p style="color: #64748b; font-size: 1.5rem; margin-bottom: 50px;">KZO InspectPro — Service d'expertise professionnelle</p>
-                
-                ${inspectionData.clientInfo.coverPhotoUrl ? `<img src="${inspectionData.clientInfo.coverPhotoUrl}" style="width: 80%; max-height: 500px; object-fit: cover; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); margin-bottom: 50px;">` : '<div style="width: 80%; height: 400px; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #94a3b8; border-radius: 12px; margin-bottom: 50px;">[Photo de façade non disponible]</div>'}
-                
-                <div style="font-size: 1.4rem; color: #334155; line-height: 1.8;">
-                    <p><strong>Préparé pour :</strong> ${clientName}</p>
-                    <p><strong>Propriété inspectée :</strong> ${address}</p>
-                    <p><strong>Date de l'inspection :</strong> ${new Date().toLocaleDateString('fr-CA')}</p>
-                </div>
-            </div>
-        `;
-        
-        // 1. FACTURE
-        html += BOILERPLATE.facture(clientName, address, prix, inspectionData.id);
-        
-        // 2. LETTRE D'INTRO
-        const inspectorName = inspectionData.clientInfo.inspectorName || 'Inspecteur';
-        html += BOILERPLATE.lettreIntro(clientName, norme, inspectorName, signatureUrl, sealUrl);
-        
-        // 2.5 COMMENT LIRE CE RAPPORT
-        if (BOILERPLATE.commentLire) html += BOILERPLATE.commentLire;
-        
-        // 2.8 LOCALISATION (GOOGLE MAPS)
-        if (BOILERPLATE.localisation) html += BOILERPLATE.localisation(address);
-        
-        // 3. CONVENTIONS LÉGALES ET LIMITATIONS
-        html += BOILERPLATE.conventions;
+        const inspectorName = inspectionData.clientInfo.inspectorName || (typeof KZO_OWNER_PROFILE !== 'undefined' ? KZO_OWNER_PROFILE.inspectorName : 'Jean Eveillard Cazeau');
 
-        // 4. SOMMAIRE EXÉCUTIF
-        html += `
-            <div class="page-break" style="padding-top: 50px;">
-                <h2 style="color: #3b82f6; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-bottom: 30px; font-size: 2rem;">Sommaire Exécutif</h2>
-                <p style="color: #475569; margin-bottom: 25px; line-height: 1.6;">Ce sommaire présente une vue rapide de l'état du bâtiment et répertorie les travaux qui nécessitent une intervention rapide. Il ne remplace en aucun cas la lecture attentive du rapport complet. L'acheteur doit prendre connaissance de tout le document.</p>
-                
-                <div style="padding: 25px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 30px;">
-                    <p style="margin-bottom: 20px; font-size: 1.15rem;"><strong>État général au moment de l'inspection :</strong> <br><br><span style="background: #eef2ff; color: #4338ca; padding: 6px 14px; border-radius: 4px; font-weight: bold; border: 1px solid #c7d2fe;">${document.getElementById('rap_etat_general')?.value || 'Non évalué'}</span></p>
-                    <p style="margin-bottom: 20px; font-size: 1.1rem; line-height: 1.6;"><strong>Travaux prioritaires :</strong><br>${document.getElementById('rap_priorite')?.value || 'Aucun documenté.'}</p>
-                    <p style="font-size: 1.1rem; line-height: 1.6;"><strong>Notes structurelles et générales de l'inspecteur :</strong><br>${document.getElementById('rap_notes')?.value || 'Aucune observation supplémentaire globale.'}</p>
-                    <p style="font-size: 1.1rem; line-height: 1.6; margin-top:16px;"><strong>Recommandations d'entretien préventif :</strong><br>${document.getElementById('rap_entretien')?.value || 'Aucune recommandation supplémentaire.'}</p>
-                </div>
-            </div>
-        `;
-        
-        // 5. CORPS DU RAPPORT (TOUTES LES 8 SECTIONS)
-        let defectCount = 0;
-        
+        // Utiliser la date de l'inspection saisie, pas aujourd'hui
+        const dateInspection = inspectionData['inspection_date']
+            ? new Date(inspectionData['inspection_date']).toLocaleDateString('fr-CA', {year:'numeric', month:'long', day:'numeric'})
+            : new Date().toLocaleDateString('fr-CA', {year:'numeric', month:'long', day:'numeric'});
+
+        const meteo = document.getElementById('prop_weather')?.value || '';
+        const temperature = document.getElementById('prop_temp')?.value || '';
+        const superficie = document.getElementById('prop_area')?.value || '';
+        const annee = document.getElementById('prop_year')?.value || '';
+        const typeBatiment = document.getElementById('prop_type')?.value || '';
+        const typeGarage = document.getElementById('prop_garage')?.value || '';
+
+        // Compter défauts et à surveiller DANS L'UNITÉ
+        let totalUrgents = 0, totalMajeurs = 0, totalSurveiller = 0, totalConformes = 0;
         inspectionData.sections.forEach(section => {
             if (section.id === 's_cover' || section.id === 's_admin' || section.id === 's_rapport') return;
-            
-            // Each section forces a new page break to generate volume.
-            html += `<div class="page-break" style="padding-top: 50px;">
-                     <h2 style="color: #3b82f6; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; font-size: 1.8rem;">Section Spécifique : ${section.title}</h2>
-                     <p style="margin-bottom: 30px; font-style: italic; color: #64748b; line-height: 1.6;">Cette section documente l'état des composants apparents et fournit des détails sur la fonctionnalité de base au moment de l'examen. Les éléments non mentionnés n'ont pu être inspectés de façon visuelle libre en raison de finitions ou d'encombrement.</p>`;
-                     
-            let sectionHasDefects = false;
-            let defectsHtml = "";
-            let infoHtml = "<div style='margin-bottom: 40px;'><h3 style='font-size: 1.3rem; margin-bottom: 20px;'>Méthode et matériaux observés</h3><ul style='list-style-type: none; padding: 0;'>";
-            
             section.subSections.forEach(sub => {
                 sub.fields.forEach(field => {
-                    // Technical descriptions
-                    if (field.type === 'select' || field.type === 'text' || field.type === 'number') {
+                    if (field.type !== 'checkbox') return;
+                    const state = unitFieldStates[field.id];
+                    if (state === 'defaut') {
+                        const sev = AIAgents.determineSeverity(field.label);
+                        if (sev === 'URGENT') totalUrgents++;
+                        else totalMajeurs++;
+                    } else if (state === 'surveiller') totalSurveiller++;
+                    else if (state === 'conforme') totalConformes++;
+                });
+            });
+        });
+
+        // PAGE DE COUVERTURE PROFESSIONNELLE
+        let html = `
+            <div class="page-break" style="min-height: 100vh; display: flex; flex-direction: column; background: #0f172a; color: white; padding: 60px; box-sizing: border-box;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 60px;">
+                    <div>
+                        <div style="font-size: 2.5rem; font-weight: 900; color: #1A56DB; letter-spacing: 4px;">KZO</div>
+                        <div style="font-size: 1rem; color: #60a5fa; letter-spacing: 3px; font-weight: 600;">INSPECTPRO</div>
+                    </div>
+                    <div style="text-align: right; font-size: 0.9rem; color: #94a3b8; line-height: 1.8;">
+                        <div>${typeof KZO_OWNER_PROFILE !== 'undefined' ? KZO_OWNER_PROFILE.phone : '438-378-6703'}</div>
+                        <div>${typeof KZO_OWNER_PROFILE !== 'undefined' ? KZO_OWNER_PROFILE.email : 'kzoinspectpro@gmail.com'}</div>
+                        <div style="margin-top:8px; color:#3b82f6; font-size:0.8rem;">BNQ 3009-500 · REIBH 2024 · RBQ</div>
+                    </div>
+                </div>
+
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="font-size: 0.85rem; color: #64748b; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 20px;">Rapport d'inspection préachat</div>
+                    <h1 style="font-size: 2.8rem; font-weight: 800; color: white; margin: 0 0 8px; line-height: 1.1;">RAPPORT D'INSPECTION</h1>
+                    <h2 style="font-size: 1.8rem; font-weight: 400; color: #60a5fa; margin: 0 0 24px;">DE BÂTIMENT D'HABITATION</h2>
+
+                    ${isMultiMode ? `
+                    <div style="display: inline-block; background: #1A56DB; color: white; padding: 10px 22px; border-radius: 8px; font-weight: 700; font-size: 1.1rem; margin-bottom: 30px; width: fit-content; box-shadow: 0 4px 16px rgba(26,86,219,0.4);">
+                        🏠 ${unitName}
+                    </div>
+                    ` : `<div style="margin-bottom:20px;"></div>`}
+
+                    ${inspectionData.clientInfo.coverPhotoUrl
+                        ? `<img src="${inspectionData.clientInfo.coverPhotoUrl}" style="width: 100%; max-height: 380px; object-fit: cover; border-radius: 12px; border: 2px solid #1A56DB; margin-bottom: 50px;">`
+                        : `<div style="width: 100%; height: 280px; background: #1e293b; border: 2px dashed #334155; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #475569; font-size: 1.1rem; margin-bottom: 50px;">📷 Photo de façade non fournie</div>`}
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                        <div>
+                            <div style="font-size: 0.75rem; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;">Préparé pour</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; color: white;">${clientName}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;">Propriété inspectée</div>
+                            <div style="font-size: 1rem; color: #e2e8f0;">${address}${isMultiMode ? `<br><span style="color:#60a5fa; font-weight:600;">— ${unitName}</span>` : ''}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;">Date de l'inspection</div>
+                            <div style="font-size: 1rem; color: #e2e8f0;">${dateInspection}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;">Inspecteur</div>
+                            <div style="font-size: 1rem; color: #e2e8f0;">${inspectorName}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e293b; display: flex; justify-content: space-between; font-size: 0.8rem; color: #475569;">
+                    <span>No dossier : ${inspectionData.id}${isMultiMode ? ` — ${unitName}` : ''}</span>
+                    <span>Conforme BNQ 3009-500 · REIBH 2024</span>
+                </div>
+            </div>
+        `;
+
+        // FICHE DE PROPRIÉTÉ
+        html += `
+            <div class="page-break" style="padding: 50px 60px;">
+                <h2 style="color: #1A56DB; border-bottom: 3px solid #1A56DB; padding-bottom: 12px; margin-bottom: 30px; font-size: 1.8rem;">Fiche de la propriété inspectée</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #f8fafc; padding: 24px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                    ${typeBatiment ? `<div><strong>Type de bâtiment :</strong> ${typeBatiment}</div>` : ''}
+                    ${typeGarage ? `<div><strong>Type de garage :</strong> ${typeGarage}</div>` : ''}
+                    ${superficie ? `<div><strong>Superficie habitable :</strong> ${superficie} m²</div>` : ''}
+                    ${annee ? `<div><strong>Année de construction :</strong> ${annee}</div>` : ''}
+                    ${meteo ? `<div><strong>Météo lors de l'inspection :</strong> ${meteo}</div>` : ''}
+                    ${temperature ? `<div><strong>Température extérieure :</strong> ${temperature} °C</div>` : ''}
+                    <div><strong>Norme applicable :</strong> ${norme}</div>
+                    <div><strong>Date du rapport :</strong> ${new Date().toLocaleDateString('fr-CA')}</div>
+                </div>
+            </div>
+        `;
+
+        // FACTURE
+        html += BOILERPLATE.facture(clientName, address, prix, inspectionData.id);
+
+        // LETTRE D'INTRO
+        html += BOILERPLATE.lettreIntro(clientName, norme, inspectorName, signatureUrl, sealUrl);
+
+        // COMMENT LIRE CE RAPPORT
+        if (BOILERPLATE.commentLire) html += BOILERPLATE.commentLire;
+
+        // LOCALISATION
+        if (BOILERPLATE.localisation) html += BOILERPLATE.localisation(address);
+
+        // CONVENTIONS
+        html += BOILERPLATE.conventions;
+
+        // SOMMAIRE EXÉCUTIF avec compteur
+        const hasIssues = totalUrgents > 0 || totalMajeurs > 0 || totalSurveiller > 0;
+        html += `
+            <div class="page-break" style="padding-top: 50px;">
+                <h2 style="color: #1A56DB; border-bottom: 2px solid #1A56DB; padding-bottom: 10px; margin-bottom: 30px; font-size: 2rem;">Sommaire Exécutif</h2>
+
+                <!-- Compteur visuel -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 30px;">
+                    <div style="background: #fef2f2; border: 2px solid #dc2626; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 2.5rem; font-weight: 900; color: #dc2626;">${totalUrgents}</div>
+                        <div style="font-size: 0.85rem; color: #7f1d1d; font-weight: 600; margin-top: 4px;">❌ URGENTS</div>
+                    </div>
+                    <div style="background: #fffbeb; border: 2px solid #d97706; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 2.5rem; font-weight: 900; color: #d97706;">${totalMajeurs}</div>
+                        <div style="font-size: 0.85rem; color: #78350f; font-weight: 600; margin-top: 4px;">❌ MAJEURS</div>
+                    </div>
+                    <div style="background: #fffbeb; border: 2px solid #f59e0b; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 2.5rem; font-weight: 900; color: #f59e0b;">${totalSurveiller}</div>
+                        <div style="font-size: 0.85rem; color: #92400e; font-weight: 600; margin-top: 4px;">⚠️ À SURVEILLER</div>
+                    </div>
+                    <div style="background: #ecfdf5; border: 2px solid #059669; border-radius: 10px; padding: 20px; text-align: center;">
+                        <div style="font-size: 2.5rem; font-weight: 900; color: #059669;">${totalConformes}</div>
+                        <div style="font-size: 0.85rem; color: #064e3b; font-weight: 600; margin-top: 4px;">✅ CONFORMES</div>
+                    </div>
+                </div>
+
+                <div style="padding: 25px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 30px;">
+                    <p style="margin-bottom: 16px; font-size: 1.1rem;"><strong>État général au moment de l'inspection :</strong><br><br>
+                        <span style="background: ${hasIssues && totalUrgents > 0 ? '#fef2f2' : hasIssues ? '#fffbeb' : '#ecfdf5'}; color: ${hasIssues && totalUrgents > 0 ? '#dc2626' : hasIssues ? '#d97706' : '#059669'}; padding: 8px 16px; border-radius: 6px; font-weight: bold; border: 1px solid currentColor; display: inline-block;">
+                            ${document.getElementById('rap_etat_general')?.value || 'Non évalué'}
+                        </span>
+                    </p>
+                    <p style="margin-bottom: 16px; font-size: 1rem; line-height: 1.7;"><strong>Travaux prioritaires :</strong><br>${document.getElementById('rap_priorite')?.value || 'Aucun documenté.'}</p>
+                    <p style="font-size: 1rem; line-height: 1.7;"><strong>Notes de l'inspecteur :</strong><br>${document.getElementById('rap_notes')?.value || 'Aucune observation supplémentaire.'}</p>
+                    ${document.getElementById('rap_entretien')?.value ? `<p style="font-size: 1rem; line-height: 1.7; margin-top: 16px;"><strong>Recommandations d'entretien préventif :</strong><br>${document.getElementById('rap_entretien').value}</p>` : ''}
+                </div>
+            </div>
+        `;
+
+        // CORPS DU RAPPORT
+        let defectCount = 0;
+        inspectionData.sections.forEach(section => {
+            if (section.id === 's_cover' || section.id === 's_admin' || section.id === 's_rapport') return;
+
+            html += `<div class="page-break" style="padding-top: 50px;">
+                     <h2 style="color: #1A56DB; margin-bottom: 20px; border-bottom: 2px solid #1A56DB; padding-bottom: 10px; font-size: 1.8rem;">${section.title}</h2>
+                     <p style="margin-bottom: 30px; font-style: italic; color: #64748b; line-height: 1.6; font-size: 0.95rem;">Cette section documente l'état des composants apparents et accessibles au moment de l'inspection visuelle non destructive. Les éléments non mentionnés n'ont pu être inspectés en raison de finitions, d'encombrement ou d'inaccessibilité.</p>`;
+
+            let sectionHasDefects = false;
+            let defectsHtml = "";
+            let infoHtml = "<div style='margin-bottom: 40px;'><h3 style='font-size: 1.2rem; margin-bottom: 16px; color: #374151;'>Matériaux et observations</h3><ul style='list-style-type: none; padding: 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;'>";
+
+            section.subSections.forEach(sub => {
+                infoHtml += `<li style="padding: 10px 16px; background: #1A56DB; color: white; font-weight: 600; font-size: 0.9rem;">${sub.title}</li>`;
+                sub.fields.forEach(field => {
+                    if (field.type === 'select' || field.type === 'text' || field.type === 'number' || field.type === 'date') {
                         const val = document.getElementById(field.id)?.value;
-                        if(val) {
-                            infoHtml += `<li style="padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 1.05rem;"><strong style="color: #334155;">${field.label} :</strong> <span style="color: #0f172a;">${val}</span></li>`;
-                        }
+                        if (val) infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem;"><strong style="color: #374151;">${field.label} :</strong> <span style="color: #0f172a;">${val}</span></li>`;
                     }
-                    
-                    // Defects
                     if (field.type === 'checkbox') {
-                        const cb = document.getElementById(field.id);
-                        if (cb && cb.checked) {
+                        const state = unitFieldStates[field.id];
+                        if (!state || state === '') return;
+                        if (state === 'defaut') {
                             sectionHasDefects = true;
                             defectCount++;
                             const severity = AIAgents.determineSeverity(field.label);
                             const reco = AIAgents.getRecommendation(field.label);
                             const narrative = AIAgents.analyzeCheckbox(field.label);
-                            
                             let color = severity === "URGENT" ? "#dc2626" : severity === "MAJEUR" ? "#d97706" : "#475569";
                             let bgClass = severity === "URGENT" ? "#fef2f2" : severity === "MAJEUR" ? "#fffbeb" : "#f8fafc";
-                            let borderClass = severity === "URGENT" ? "#fecaca" : severity === "MAJEUR" ? "#fde68a" : "#e2e8f0";
-                            
                             defectsHtml += `
-                                <div style="margin-bottom: 25px; padding: 25px; background: ${bgClass}; border: 1px solid ${borderClass}; border-left: 6px solid ${color}; border-radius: 8px; page-break-inside: avoid;">
+                                <div style="margin-bottom: 25px; padding: 25px; background: ${bgClass}; border-left: 6px solid ${color}; border-radius: 8px; page-break-inside: avoid;">
                                     <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 15px;">
-                                        <span style="background: ${color}; color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; margin-top: 2px;">${severity}</span>
-                                        <strong style="font-size: 1.15rem; color: #0f172a;">${field.label}</strong>
+                                        <span style="background: ${color}; color: white; padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; white-space: nowrap;">❌ ${severity}</span>
+                                        <strong style="font-size: 1.1rem; color: #0f172a;">${field.label}</strong>
                                     </div>
-                                    <p style="color: #334155; font-size: 1rem; line-height: 1.6; margin-bottom: 15px; white-space: pre-line;">${narrative}</p>
-                                    <div style="color: #0f172a; font-size: 1rem; background: rgba(0,0,0,0.03); padding: 15px; border-radius: 6px;"><strong>💡 Recommandation de l'expert :</strong><br>${reco}</div>
-                                </div>
-                            `;
+                                    <p style="color: #334155; font-size: 0.95rem; line-height: 1.7; margin-bottom: 15px;">${narrative}</p>
+                                    <div style="background: rgba(0,0,0,0.04); padding: 14px; border-radius: 6px; font-size: 0.95rem;"><strong>💡 Recommandation :</strong><br>${reco}</div>
+                                </div>`;
+                        } else if (state === 'surveiller') {
+                            const reco = AIAgents.getRecommendation(field.label);
+                            defectsHtml += `
+                                <div style="margin-bottom: 16px; padding: 18px; background: #fffbeb; border-left: 5px solid #d97706; border-radius: 8px;">
+                                    <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px;">
+                                        <span style="background: #d97706; color: white; padding: 3px 10px; border-radius: 4px; font-size: 0.82rem; font-weight: bold; white-space: nowrap;">⚠️ À SURVEILLER</span>
+                                        <span style="color: #0f172a; font-size: 0.95rem;">${field.label}</span>
+                                    </div>
+                                    <div style="font-size: 0.88rem; color: #78350f; margin-top: 6px;"><strong>Suggestion :</strong> ${reco}</div>
+                                </div>`;
+                        } else if (state === 'conforme') {
+                            infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #059669;">✅ ${field.label} — <em>Conforme</em></li>`;
+                        } else if (state === 'na') {
+                            infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #94a3b8;">➖ ${field.label} — <em>Non applicable</em></li>`;
                         }
                     }
                 });
 
-                // Photos addionnelles pour la sous-section dans le rapport
-                const subPhotos = inspectionData.sectionPhotos[sub.id] || [];
+                // Photos de la sous-section (de l'unité active)
+                const subPhotos = unitSectionPhotos[sub.id] || [];
                 if (subPhotos.length > 0) {
-                    infoHtml += `</ul>`; // Fermer la liste des champs
-                    infoHtml += `<div style="margin: 20px 0; padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">`;
-                    infoHtml += `<strong style="color: #475569; font-size: 1.05rem;">Photos associées (${sub.title}) :</strong>`;
-                    infoHtml += `<div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">`;
+                    infoHtml += `</ul><div style="margin: 16px 0; padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">`;
+                    infoHtml += `<strong style="color: #475569; font-size: 0.95rem;">📸 Photos (${sub.title}) :</strong>`;
+                    infoHtml += `<div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px;">`;
                     subPhotos.forEach(photo => {
-                        infoHtml += `<img src="${photo.url}" style="width: 200px; height: 150px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">`;
+                        infoHtml += `<img src="${photo.url}" style="width: 180px; height: 135px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1;">`;
                     });
-                    infoHtml += `</div></div>`;
-                    infoHtml += `<ul style='list-style-type: none; padding: 0;'>`; // Réouvrir pour la prochaine sous-section
+                    infoHtml += `</div></div><ul style='list-style-type: none; padding: 0;'>`;
                 }
             });
             infoHtml += "</ul></div>";
-            
-            // Print the info gathered
             html += infoHtml;
-            
-            // Print anomalies
-            html += `<h3 style='font-size: 1.3rem; margin-bottom: 20px; color: ${sectionHasDefects ? '#dc2626' : '#10b981'};'>Anomalies documentées</h3>`;
-            if (sectionHasDefects) {
+
+            // Anomalies
+            html += `<h3 style='font-size: 1.2rem; margin-bottom: 20px; color: ${sectionHasDefects ? '#dc2626' : '#059669'};'>${sectionHasDefects ? '⚠️ Anomalies et observations' : '✅ Aucune anomalie majeure'}</h3>`;
+            if (sectionHasDefects || defectsHtml.includes('surveiller')) {
                 html += defectsHtml;
             } else {
-                html += `<div style="padding: 20px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; color: #065f46;"><p style="font-size: 1.05rem;">✔ L'inspection visuelle et non-destructive des éléments apparents de cette section n'a révélé aucun défaut d'importance immédiate nécessitant une intervention. Se référer au guide d'entretien pour prolonger la durée de vie des matériaux.</p></div>`;
+                html += `<div style="padding: 18px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; color: #065f46; font-size: 0.95rem;">L'inspection visuelle non-destructive des éléments apparents de cette section n'a révélé aucun défaut d'importance immédiate. Entretien préventif recommandé selon le calendrier saisonnier.</div>`;
             }
 
-            // Commentaires des sous-sections
+            // Commentaires sous-sections (de l'unité active)
             let hasSubComments = false;
             section.subSections.forEach(sub => {
-                const sc = inspectionData.comments && inspectionData.comments[sub.id];
+                const sc = unitComments[sub.id];
                 if (sc && (sc.text || sc.severity)) hasSubComments = true;
             });
             if (hasSubComments) {
-                html += `<h3 style='font-size: 1.2rem; margin-top: 30px; margin-bottom: 16px; color: #92400e;'>📝 Commentaires par sous-section</h3>`;
+                html += `<h3 style='font-size: 1.1rem; margin-top: 30px; margin-bottom: 16px; color: #92400e;'>📝 Commentaires de l'inspecteur</h3>`;
                 section.subSections.forEach(sub => {
-                    const sc = inspectionData.comments && inspectionData.comments[sub.id];
+                    const sc = unitComments[sub.id];
                     if (!sc || (!sc.text && !sc.severity)) return;
                     const sevColors = { urgent: '#dc2626', majeur: '#d97706', mineur: '#ca8a04', ok: '#059669' };
                     const sevLabels = { urgent: '🔴 URGENT', majeur: '🟠 MAJEUR', mineur: '🟡 MINEUR', ok: '✅ CONFORME' };
                     const sevColor = sevColors[sc.severity] || '#64748b';
-                    html += `<div style="margin-bottom: 16px; padding: 16px; background: #fff7ed; border-left: 5px solid ${sevColor}; border-radius: 6px;">
-                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-                            <strong style="color:#1e293b; font-size:1rem;">${sub.title}</strong>
-                            ${sc.severity ? `<span style="background:${sevColor}; color:white; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:700;">${sevLabels[sc.severity] || sc.severity}</span>` : ''}
+                    html += `<div style="margin-bottom: 14px; padding: 14px; background: #fff7ed; border-left: 4px solid ${sevColor}; border-radius: 6px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+                            <strong style="color:#1e293b; font-size:0.95rem;">${sub.title}</strong>
+                            ${sc.severity ? `<span style="background:${sevColor}; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; font-weight:700;">${sevLabels[sc.severity] || sc.severity}</span>` : ''}
                         </div>
-                        ${sc.text ? `<p style="color:#334155; font-size:0.95rem; line-height:1.6; margin:0; white-space:pre-wrap;">${sc.text}</p>` : ''}
+                        ${sc.text ? `<p style="color:#334155; font-size:0.9rem; line-height:1.6; margin:0; white-space:pre-wrap;">${sc.text}</p>` : ''}
                     </div>`;
                 });
             }
 
-            // Commentaire global de la section
+            // Commentaire global section (de l'unité active)
             const secId = 'section_' + inspectionData.sections.indexOf(section);
-            const secC = inspectionData.sectionComments && inspectionData.sectionComments[secId];
+            const secC = unitSectionComments[secId];
             if (secC && (secC.text || secC.severity)) {
                 const sevColors = { urgent: '#dc2626', majeur: '#d97706', mineur: '#ca8a04', ok: '#059669' };
                 const sevLabels = { urgent: '🔴 URGENT', majeur: '🟠 MAJEUR', mineur: '🟡 MINEUR', ok: '✅ CONFORME' };
-                html += `<div style="margin-top: 24px; padding: 20px; background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px;">
-                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
-                        <strong style="color:#1e40af; font-size:1.05rem;">🗂️ Commentaire global de l'inspecteur</strong>
-                        ${secC.severity ? `<span style="background:${sevColors[secC.severity] || '#64748b'}; color:white; padding:4px 12px; border-radius:12px; font-size:0.85rem; font-weight:700;">${sevLabels[secC.severity] || secC.severity}</span>` : ''}
+                html += `<div style="margin-top: 20px; padding: 18px; background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px;">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                        <strong style="color:#1e40af; font-size:0.95rem;">🗂️ Commentaire global</strong>
+                        ${secC.severity ? `<span style="background:${sevColors[secC.severity]||'#64748b'}; color:white; padding:3px 10px; border-radius:10px; font-size:0.82rem; font-weight:700;">${sevLabels[secC.severity]||secC.severity}</span>` : ''}
                     </div>
-                    ${secC.text ? `<p style="color:#1e293b; font-size:1rem; line-height:1.7; margin:0; white-space:pre-wrap;">${secC.text}</p>` : ''}
+                    ${secC.text ? `<p style="color:#1e293b; font-size:0.95rem; line-height:1.7; margin:0; white-space:pre-wrap;">${secC.text}</p>` : ''}
                 </div>`;
             }
-            
+
             html += "</div>";
         });
-        
-        // 5.5 ATTESTATION ET SIGNATURE
+
+        // ATTESTATION
         if (BOILERPLATE.attestation) html += BOILERPLATE.attestation(clientName, inspectorName, signatureUrl, sealUrl);
-        
-        // 6. GUIDE D'ENTRETIEN 
+
+        // LETTRE DE REMERCIEMENT
+        if (BOILERPLATE.lettreRemerciement) {
+            html += BOILERPLATE.lettreRemerciement(
+                clientName, address, inspectorName,
+                window.AppCompanyProfile ? window.AppCompanyProfile.name : 'KZO InspectPro',
+                signatureUrl
+            );
+        }
+
+        // GUIDE D'ENTRETIEN
         html += BOILERPLATE.guideEntretien;
-        
-        // 7. L'ANNEXE MAJEURE (NORMES DE PRATIQUES - 25+ PAGES POUR ATTEINDRE LES 40 PAGES)
+
+        // ANNEXE NORMES
         html += BOILERPLATE.normesPratique(norme);
-        
+
         reportContent.innerHTML = html;
         reportModal.style.display = 'flex';
-        
-        // --- GOOGLE SHEETS WEBHOOK (Tâche de fond) ---
-        // L'utilisateur devra coller l'URL fournie par son script Google ici :
-        const GOOGLE_WEBHOOK_URL = ""; 
 
-        if (GOOGLE_WEBHOOK_URL && clientName !== "Client inconnu") {
+        // --- SYNCHRONISATION GOOGLE SHEETS ---
+        // Envoie les données de l'inspection vers Google Sheets pour archivage
+        const webhookUrl = (typeof KZO_CONFIG !== 'undefined' && KZO_CONFIG.SHEETS_WEBHOOK_URL) ? KZO_CONFIG.SHEETS_WEBHOOK_URL : '';
+        if (webhookUrl) {
             try {
-                fetch(GOOGLE_WEBHOOK_URL, {
+                const syncData = {
+                    // Identification
+                    date_rapport: new Date().toLocaleDateString('fr-CA'),
+                    date_inspection: dateInspection,
+                    facture_id: inspectionData.id,
+                    numero_dossier: inspectionData.id,
+
+                    // Client
+                    client: clientName,
+                    adresse_propriete: address,
+
+                    // Propriété
+                    type_batiment: typeBatiment,
+                    annee_construction: annee,
+                    superficie: superficie,
+                    type_garage: typeGarage,
+                    meteo: meteo,
+                    temperature: temperature,
+
+                    // Inspecteur
+                    inspecteur: inspectorName,
+                    entreprise: window.AppCompanyProfile ? window.AppCompanyProfile.name : 'KZO InspectPro',
+                    norme_applicable: norme,
+
+                    // Résultats
+                    defauts_urgents: totalUrgents,
+                    defauts_majeurs: totalMajeurs,
+                    a_surveiller: totalSurveiller,
+                    conformes: totalConformes,
+                    etat_general: document.getElementById('rap_etat_general')?.value || 'Non évalué',
+
+                    // Financier
+                    montant_facture: prix,
+
+                    // Notes
+                    travaux_prioritaires: document.getElementById('rap_priorite')?.value || '',
+                    notes_inspecteur: document.getElementById('rap_notes')?.value || ''
+                };
+
+                fetch(webhookUrl, {
                     method: 'POST',
-                    mode: 'no-cors', // Requis pour éviter les blocages CORS de Google
+                    mode: 'no-cors',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        date: new Date().toLocaleDateString('fr-CA'),
-                        facture_id: inspectionData.id,
-                        client: clientName,
-                        montant: prix
-                    })
+                    body: JSON.stringify(syncData)
                 });
-                console.log("Synchronisation Google Sheets lancée en arrière-plan.");
+                console.log("✅ Synchronisation Google Sheets envoyée", syncData);
             } catch(e) {
-                console.error("Erreur Webhook Google Sheets :", e);
+                console.error("⚠️ Erreur Webhook Google Sheets :", e);
             }
+        } else {
+            console.log("ℹ️ Aucune URL Google Sheets configurée dans config.js");
         }
-        
+
         document.getElementById('closeReportBtn').onclick = () => { reportModal.style.display = 'none'; };
-        document.getElementById('printReportBtn').onclick = () => { 
-            // On laisse un petit délai (500ms) pour s'assurer que l'iframe Google Maps a le temps de charger avant d'afficher la fenêtre système d'impression.
-            setTimeout(() => window.print(), 500); 
-        };
+        document.getElementById('printReportBtn').onclick = () => { setTimeout(() => window.print(), 500); };
     }
 
     // --- Persistence Globale (Offline Support) ---
     function saveAppState() {
-        localStorage.setItem('kzo_inspection_data', JSON.stringify(inspectionData));
+        try {
+            const toSave = {
+                clientInfo: inspectionData.clientInfo,
+                id: inspectionData.id,
+                // Données multi-unités (fieldStates, comments, sectionComments, sectionPhotos
+                // sont stockés dans units — pas besoin de les dupliquer)
+                units: inspectionData.units,
+                currentUnitId: inspectionData.currentUnitId
+            };
+            localStorage.setItem('kzo_inspection_data', JSON.stringify(toSave));
+        } catch(e) { console.error("Erreur sauvegarde", e); }
     }
 
     function loadAppState() {
@@ -1391,12 +2166,58 @@
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                // Fusionner les données (on garde la structure mais on remplit ce qui existe)
-                Object.assign(inspectionData, parsed);
+                if (parsed.clientInfo) Object.assign(inspectionData.clientInfo, parsed.clientInfo);
+                if (parsed.id) inspectionData.id = parsed.id;
+                
+                // Charger les unités (nouvelle structure)
+                if (parsed.units && Array.isArray(parsed.units) && parsed.units.length > 0) {
+                    inspectionData.units = parsed.units;
+                } else if (parsed.fieldStates || parsed.comments) {
+                    // MIGRATION : Ancienne structure sans unités → copier dans unit_1
+                    inspectionData.units[0].fieldStates = parsed.fieldStates || {};
+                    inspectionData.units[0].comments = parsed.comments || {};
+                    inspectionData.units[0].sectionComments = parsed.sectionComments || {};
+                    inspectionData.units[0].sectionPhotos = parsed.sectionPhotos || {};
+                }
+                if (parsed.currentUnitId && inspectionData.units.find(u => u.id === parsed.currentUnitId)) {
+                    inspectionData.currentUnitId = parsed.currentUnitId;
+                }
                 return true;
-            } catch(e) { console.error("Erreur de chargement local", e); }
+            } catch(e) { console.error("Erreur chargement", e); }
         }
         return false;
+    }
+
+    // --- Bouton Nouvelle Inspection ---
+    function resetInspection() {
+        if (!confirm('⚠️ Êtes-vous sûr de vouloir démarrer une nouvelle inspection ?\nToutes les données actuelles seront effacées.')) return;
+        localStorage.removeItem('kzo_inspection_data');
+        inspectionData.clientInfo = {};
+        inspectionData.fieldStates = {};
+        inspectionData.comments = {};
+        inspectionData.sectionComments = {};
+        inspectionData.sectionPhotos = {};
+        inspectionData.id = 'KZO-' + Date.now().toString().slice(-5);
+        // Reset unités
+        inspectionData.units = [
+            { id: 'unit_1', name: 'Unité 1', fieldStates: {}, comments: {}, sectionComments: {}, sectionPhotos: {} }
+        ];
+        inspectionData.currentUnitId = 'unit_1';
+        currentSectionIndex = 0;
+        renderUnitTabs();
+        renderNavigation();
+        renderSection(0);
+        alert('✅ Nouvelle inspection démarrée !');
+    }
+
+    // Ajouter bouton Nouvelle Inspection dans la topbar
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) {
+        const newInspBtn = document.createElement('button');
+        newInspBtn.textContent = '🆕 Nouvelle inspection';
+        newInspBtn.style.cssText = 'background: #059669; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin-right: 8px;';
+        newInspBtn.onclick = resetInspection;
+        topBar.insertBefore(newInspBtn, topBar.querySelector('.assistant-btn'));
     }
 
     // Capture de tous les changements du formulaire
@@ -1425,6 +2246,9 @@
     loadAppState();
     renderNavigation();
     renderSection(0);
+    renderUnitTabs(); // Afficher la barre d'unités si applicable
+    // Render multi-unit tabs bar after initial load
+    setTimeout(() => renderUnitTabs(), 50);
 
     // Patch for the manual sync button in the UI
     document.addEventListener('click', (e) => {
@@ -1433,6 +2257,3 @@
         }
     });
 });
-
-
-
