@@ -89,6 +89,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Propriétés dynamiques sur inspectionData
+    // IMPORTANT: supprimer les anciennes propriétés avant de redéfinir
+    // sinon defineProperty peut échouer silencieusement
+    try { delete inspectionData.fieldStates; } catch(e) {}
+    try { delete inspectionData.comments; } catch(e) {}
+    try { delete inspectionData.sectionComments; } catch(e) {}
+    try { delete inspectionData.sectionPhotos; } catch(e) {}
+
     Object.defineProperty(inspectionData, 'fieldStates', {
         get() {
             const u = _getActiveUnit();
@@ -99,7 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const u = _getActiveUnit();
             u.fieldStates = v;
         },
-        configurable: true
+        configurable: true,
+        enumerable: true
     });
 
     Object.defineProperty(inspectionData, 'comments', {
@@ -112,7 +120,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const u = _getActiveUnit();
             u.comments = v;
         },
-        configurable: true
+        configurable: true,
+        enumerable: true
     });
 
     Object.defineProperty(inspectionData, 'sectionComments', {
@@ -125,7 +134,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const u = _getActiveUnit();
             u.sectionComments = v;
         },
-        configurable: true
+        configurable: true,
+        enumerable: true
     });
 
     Object.defineProperty(inspectionData, 'sectionPhotos', {
@@ -138,7 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const u = _getActiveUnit();
             u.sectionPhotos = v;
         },
-        configurable: true
+        configurable: true,
+        enumerable: true
     });
 
     // Retourner l'unité active
@@ -736,6 +747,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     function renderClientInputs() {
                         clientsContainer.innerHTML = '';
+                        // Garantir que names existe toujours
+                        if (!Array.isArray(inspectionData.clientInfo.names) || inspectionData.clientInfo.names.length === 0) {
+                            inspectionData.clientInfo.names = [''];
+                        }
                         inspectionData.clientInfo.names.forEach((name, i) => {
                             const row = document.createElement('div');
                             row.style.display = 'flex';
@@ -2244,11 +2259,20 @@ Réponds en français.`;
 
     // Initialize the app
     loadAppState();
+    
+    // Garanties post-load : s'assurer que toutes les structures critiques existent
+    if (!inspectionData.clientInfo) inspectionData.clientInfo = {};
+    if (!Array.isArray(inspectionData.clientInfo.names) || inspectionData.clientInfo.names.length === 0) {
+        inspectionData.clientInfo.names = [''];
+    }
+    if (!inspectionData.units || !Array.isArray(inspectionData.units) || inspectionData.units.length === 0) {
+        inspectionData.units = [{ id: 'unit_1', name: 'Unité 1', fieldStates: {}, comments: {}, sectionComments: {}, sectionPhotos: {} }];
+        inspectionData.currentUnitId = 'unit_1';
+    }
+    
     renderNavigation();
     renderSection(0);
     renderUnitTabs(); // Afficher la barre d'unités si applicable
-    // Render multi-unit tabs bar after initial load
-    setTimeout(() => renderUnitTabs(), 50);
 
     // Patch for the manual sync button in the UI
     document.addEventListener('click', (e) => {
