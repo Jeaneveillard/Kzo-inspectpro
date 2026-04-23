@@ -1373,12 +1373,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 4. Photo Vision Modal & Drawing ---
     const modal = document.getElementById('photoModal');
+    const dropZone = document.getElementById('dropZone');
     const photoArea = document.getElementById('photoArea');
     const photoText = document.getElementById('photoText');
     const simulatedImg = document.getElementById('simulatedImg');
     const drawCanvas = document.getElementById('drawCanvas');
     const drawToolbar = document.getElementById('drawToolbar');
-    const takePhotoBtn = document.getElementById('takePhotoBtn');
+    const galleryInput = document.getElementById('galleryInput');
+    const cameraInput = document.getElementById('cameraInput');
+    const changePhotoBtn = document.getElementById('changePhotoBtn');
     const aiResultArea = document.getElementById('aiResultArea');
     const applyAiBtn = document.getElementById('applyAiBtn');
     let currentVisionField = null;
@@ -1386,12 +1389,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Drawing context
     let ctx = null;
     let isDrawing = false;
-    let currentTool = 'circle'; 
+    let currentTool = 'circle';
     let startX = 0, startY = 0;
-    let snapshot = null; // Save state for shape preview
+    let snapshot = null;
 
     function initCanvas() {
-        // Obtenir la taille réelle affichée
         const rect = photoArea.getBoundingClientRect();
         drawCanvas.width = rect.width;
         drawCanvas.height = rect.height;
@@ -1400,163 +1402,158 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineJoin = 'round';
     }
 
-    function openPhotoModal(field) {
-        currentVisionField = field;
-        modal.classList.add('open');
-        
-        // Reset states
-        photoArea.classList.remove('taken');
-        photoText.style.display = 'block';
-        photoText.innerHTML = 'Appuyez pour prendre une photo du défaut';
-        simulatedImg.style.display = 'none';
+    function resetPhotoModal() {
+        dropZone.style.display = 'flex';
+        photoArea.style.display = 'none';
+        photoText.style.display = 'none';
         drawCanvas.style.display = 'none';
         drawToolbar.style.display = 'none';
-        
         aiResultArea.style.display = 'none';
         applyAiBtn.style.display = 'none';
-        takePhotoBtn.style.display = 'block';
+        simulatedImg.src = '';
+        if (ctx) ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        dropZone.style.borderColor = '#1A56DB';
+        dropZone.style.background = '#eff6ff';
+    }
+
+    function openPhotoModal(field) {
+        currentVisionField = field;
+        resetPhotoModal();
+        modal.classList.add('open');
+    }
+
+    async function handlePhotoFile(file) {
+        if (!file) return;
+        const check = validateFile(file);
+        if (!check.valid) { alert('⚠️ ' + check.error); return; }
+
+        // Afficher la photo
+        const url = URL.createObjectURL(file);
+        simulatedImg.src = url;
+        dropZone.style.display = 'none';
+        photoArea.style.display = 'block';
+        photoText.style.display = 'block';
+        photoText.textContent = '⏳ Analyse IA en cours...';
+        photoText.style.cssText = 'display:block; text-align:center; padding: 8px; color:#1A56DB; font-weight:600; background: #eff6ff; border-radius:8px; margin-top:8px;';
+        drawCanvas.style.display = 'block';
+        drawToolbar.style.display = 'flex';
+        setTimeout(() => initCanvas(), 50);
+
+        // Convertir en base64 et envoyer à l'IA
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            const base64 = ev.target.result.split(',')[1];
+            const mimeType = file.type;
+            const apiKey = localStorage.getItem('inspectpro_api_key');
+            const provider = localStorage.getItem('inspectpro_api_provider') || 'anthropic';
+            const fieldLabel = currentVisionField ? currentVisionField.label : 'élément inspecté';
+            const prompt = `Tu es un inspecteur en bâtiment certifié RBQ au Québec (BNQ 3009-500). Analyse cette photo dans le contexte : "${fieldLabel}". Décris en 2-3 phrases ce que tu observes visuellement. Puis donne une recommandation professionnelle concise. Réponds en français.`;
+
+            if (!apiKey) {
+                photoText.textContent = '';
+                document.getElementById('analysisText').textContent = "⚠️ Aucune clé API configurée. Cliquez sur ⚙️ dans l'Assistant IA pour ajouter votre clé Claude, Gemini ou OpenAI.";
+                document.getElementById('recommendationText').textContent = '';
+                aiResultArea.style.display = 'block';
+                return;
+            }
+
+            try {
+                let analysisText = '', recoText = '';
+
+                if (provider === 'anthropic') {
+                    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+                        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 500,
+                            messages: [{ role: 'user', content: [
+                                { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+                                { type: 'text', text: prompt }
+                            ]}]
+                        })
+                    });
+                    const data = await resp.json();
+                    const full = data.content?.[0]?.text || 'Analyse non disponible.';
+                    const parts = full.split(/recommandation|Recommandation/i);
+                    analysisText = parts[0].trim();
+                    recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
+
+                } else if (provider === 'gemini') {
+                    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: mimeType, data: base64 } }, { text: prompt }] }] })
+                    });
+                    const data = await resp.json();
+                    const full = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Analyse non disponible.';
+                    const parts = full.split(/recommandation|Recommandation/i);
+                    analysisText = parts[0].trim();
+                    recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
+
+                } else if (provider === 'openai') {
+                    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                        body: JSON.stringify({ model: 'gpt-4o', max_tokens: 500,
+                            messages: [{ role: 'user', content: [
+                                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+                                { type: 'text', text: prompt }
+                            ]}]
+                        })
+                    });
+                    const data = await resp.json();
+                    const full = data.choices?.[0]?.message?.content || 'Analyse non disponible.';
+                    const parts = full.split(/recommandation|Recommandation/i);
+                    analysisText = parts[0].trim();
+                    recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
+                }
+
+                photoText.style.display = 'none';
+                document.getElementById('analysisText').textContent = analysisText;
+                document.getElementById('recommendationText').textContent = recoText;
+                aiResultArea.style.display = 'block';
+                applyAiBtn.style.display = 'block';
+
+            } catch (err) {
+                photoText.style.display = 'none';
+                document.getElementById('analysisText').textContent = '❌ Erreur : ' + err.message;
+                document.getElementById('recommendationText').textContent = 'Vérifiez votre connexion et votre clé API.';
+                aiResultArea.style.display = 'block';
+            }
+        };
+        reader.readAsDataURL(file);
     }
 
     document.getElementById('closeModal').addEventListener('click', () => { modal.classList.remove('open'); });
 
-    takePhotoBtn.addEventListener('click', async () => {
-        // Ouvrir le sélecteur de fichier (galerie ou caméra)
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
-        fileInput.capture = 'environment'; // Caméra arrière sur mobile
-        fileInput.style.display = 'none';
-        document.body.appendChild(fileInput);
-
-        fileInput.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const check = validateFile(file);
-            if (!check.valid) { alert('⚠️ ' + check.error); return; }
-
-            photoArea.classList.add('taken');
-            photoText.innerHTML = '📸 Photo chargée...<br><br>⏳ Analyse par Claude Vision...';
-            takePhotoBtn.style.display = 'none';
-
-            // Afficher la photo sélectionnée
-            const url = URL.createObjectURL(file);
-            simulatedImg.src = url;
-            simulatedImg.alt = 'Photo du défaut';
-            photoText.style.display = 'none';
-            simulatedImg.style.display = 'block';
-            drawCanvas.style.display = 'block';
-            drawToolbar.style.display = 'flex';
-            initCanvas();
-
-            // Convertir en base64 pour l'API
-            const reader = new FileReader();
-            reader.onload = async (ev) => {
-                const base64 = ev.target.result.split(',')[1];
-                const mimeType = file.type;
-
-                // Appel API Claude Vision
-                const apiKey = localStorage.getItem('inspectpro_api_key');
-                const provider = localStorage.getItem('inspectpro_api_provider') || 'anthropic';
-
-                if (!apiKey) {
-                    document.getElementById('analysisText').textContent = "⚠️ Aucune clé API configurée. Cliquez sur ⚙️ dans l'Assistant IA pour ajouter votre clé.";
-                    document.getElementById('recommendationText').textContent = "Configurez votre clé API Claude, Gemini ou OpenAI pour activer l'analyse de photos.";
-                    aiResultArea.style.display = 'block';
-                    return;
-                }
-
-                try {
-                    let analysisText = '';
-                    let recoText = '';
-                    const fieldLabel = currentVisionField ? currentVisionField.label : 'élément inspecté';
-                    const prompt = `Tu es un inspecteur en bâtiment certifié RBQ au Québec. Analyse cette photo dans le contexte suivant : "${fieldLabel}". 
-Décris en 2-3 phrases ce que tu observes visuellement (matériaux, état, signes visibles de défauts ou de conformité).
-Puis donne une recommandation professionnelle concise selon la norme BNQ 3009-500.
-Réponds en français.`;
-
-                    if (provider === 'anthropic') {
-                        const resp = await fetch('https://api.anthropic.com/v1/messages', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'x-api-key': apiKey,
-                                'anthropic-version': '2023-06-01',
-                                'anthropic-dangerous-direct-browser-access': 'true'
-                            },
-                            body: JSON.stringify({
-                                model: 'claude-haiku-4-5-20251001',
-                                max_tokens: 500,
-                                messages: [{
-                                    role: 'user',
-                                    content: [
-                                        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
-                                        { type: 'text', text: prompt }
-                                    ]
-                                }]
-                            })
-                        });
-                        const data = await resp.json();
-                        const full = data.content?.[0]?.text || 'Analyse non disponible.';
-                        const parts = full.split(/recommandation|Recommandation/i);
-                        analysisText = parts[0].trim();
-                        recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
-
-                    } else if (provider === 'gemini') {
-                        const url2 = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-                        const resp = await fetch(url2, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{ parts: [
-                                    { inline_data: { mime_type: mimeType, data: base64 } },
-                                    { text: prompt }
-                                ]}]
-                            })
-                        });
-                        const data = await resp.json();
-                        const full = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Analyse non disponible.';
-                        const parts = full.split(/recommandation|Recommandation/i);
-                        analysisText = parts[0].trim();
-                        recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
-
-                    } else if (provider === 'openai') {
-                        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                            body: JSON.stringify({
-                                model: 'gpt-4o',
-                                max_tokens: 500,
-                                messages: [{ role: 'user', content: [
-                                    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
-                                    { type: 'text', text: prompt }
-                                ]}]
-                            })
-                        });
-                        const data = await resp.json();
-                        const full = data.choices?.[0]?.message?.content || 'Analyse non disponible.';
-                        const parts = full.split(/recommandation|Recommandation/i);
-                        analysisText = parts[0].trim();
-                        recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
-                    }
-
-                    document.getElementById('analysisText').textContent = analysisText;
-                    document.getElementById('recommendationText').textContent = recoText;
-                    aiResultArea.style.display = 'block';
-                    applyAiBtn.style.display = 'block';
-
-                } catch (err) {
-                    document.getElementById('analysisText').textContent = '❌ Erreur lors de l\'analyse : ' + err.message;
-                    document.getElementById('recommendationText').textContent = 'Vérifiez votre connexion et votre clé API.';
-                    aiResultArea.style.display = 'block';
-                }
-            };
-            reader.readAsDataURL(file);
-            document.body.removeChild(fileInput);
-        };
-
-        fileInput.click();
+    // Glisser-déposer
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#059669';
+        dropZone.style.background = '#ecfdf5';
     });
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.style.borderColor = '#1A56DB';
+        dropZone.style.background = '#eff6ff';
+    });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        handlePhotoFile(file);
+    });
+
+    // Clic sur la zone de drop = ouvrir galerie
+    dropZone.addEventListener('click', (e) => {
+        if (e.target === dropZone || e.target.closest('#dropZone') === dropZone) {
+            galleryInput.click();
+        }
+    });
+
+    // Input galerie
+    if (galleryInput) galleryInput.addEventListener('change', (e) => handlePhotoFile(e.target.files[0]));
+
+    // Input caméra
+    if (cameraInput) cameraInput.addEventListener('change', (e) => handlePhotoFile(e.target.files[0]));
+
+    // Bouton changer photo
+    if (changePhotoBtn) changePhotoBtn.addEventListener('click', () => resetPhotoModal());
 
     // --- Drawing Logic ---
     const drawBtns = document.querySelectorAll('.draw-btn');
