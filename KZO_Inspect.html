@@ -1,11 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data: https://images.unsplash.com https://maps.googleapis.com; connect-src https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com; frame-src https://www.google.com;">
     <meta name="referrer" content="no-referrer">
-    <title>InspectPro - Logiciel d'Inspection Intelligente</title>
+    <title>KZO InspectPro — Inspection de Bâtiment | BNQ 3009-500</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=4">
     <link rel="manifest" href="manifest.json">
@@ -164,13 +164,69 @@
                         <button id="clearDrawBtn" style="padding: 6px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer;">🗑️ Effacer</button>
                     </div>
 
-                    <div class="photo-placeholder" id="photoArea" style="position: relative; overflow: hidden;">
-                        <img id="simulatedImg" alt="Photo du défaut capturé" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: none;">
-                        <canvas id="drawCanvas" style="position: absolute; top: 0; left: 0; z-index: 10; display: none; cursor: crosshair; touch-action: none;"></canvas>
-                        <span id="photoText">Appuyez pour prendre une photo du défaut</span>
+                    <!-- Zone glisser-déposer + aperçu photo -->
+                    <div id="dropZoneOuter" style="position: relative;">
+                        <!-- Zone de drop (visible avant photo) -->
+                        <div id="dropZone" style="
+                            border: 3px dashed #1A56DB;
+                            border-radius: 14px;
+                            background: #eff6ff;
+                            padding: 40px 20px;
+                            text-align: center;
+                            cursor: pointer;
+                            transition: all 0.2s;
+                            min-height: 200px;
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            gap: 12px;
+                        ">
+                            <div style="font-size: 3rem;">📁</div>
+                            <div style="font-size: 1.05rem; font-weight: 700; color: #1e40af;">Glissez une photo ici</div>
+                            <div style="color: #64748b; font-size: 0.9rem;">ou</div>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                                <label id="galleryLabel" style="
+                                    background: #1A56DB; color: white;
+                                    padding: 10px 20px; border-radius: 8px;
+                                    font-weight: 600; cursor: pointer; font-size: 0.9rem;
+                                    display: inline-flex; align-items: center; gap: 6px;
+                                ">
+                                    🖼️ Galerie / Fichier
+                                    <input type="file" id="galleryInput" accept="image/*" style="display:none;">
+                                </label>
+                                <label id="cameraLabel" style="
+                                    background: #059669; color: white;
+                                    padding: 10px 20px; border-radius: 8px;
+                                    font-weight: 600; cursor: pointer; font-size: 0.9rem;
+                                    display: inline-flex; align-items: center; gap: 6px;
+                                ">
+                                    📷 Caméra
+                                    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+                                </label>
+                            </div>
+                            <div style="color: #94a3b8; font-size: 0.8rem; margin-top: 4px;">JPG, PNG, WebP — max 10 Mo</div>
+                        </div>
+
+                        <!-- Aperçu photo (caché au départ) -->
+                        <div id="photoArea" style="position: relative; overflow: hidden; display: none; border-radius: 12px; min-height: 260px; background: #0f172a;">
+                            <img id="simulatedImg" alt="Photo du défaut" style="width: 100%; height: 100%; object-fit: contain; display: block; max-height: 320px;">
+                            <canvas id="drawCanvas" style="position: absolute; top: 0; left: 0; z-index: 10; display: none; cursor: crosshair; touch-action: none; width: 100%; height: 100%;"></canvas>
+                            <!-- Bouton changer photo -->
+                            <button id="changePhotoBtn" style="
+                                position: absolute; top: 10px; right: 10px;
+                                background: rgba(0,0,0,0.6); color: white;
+                                border: none; border-radius: 8px; padding: 6px 12px;
+                                font-size: 0.8rem; cursor: pointer; z-index: 20;
+                            ">🔄 Changer</button>
+                        </div>
+
+                        <!-- Message état analyse -->
+                        <div id="photoText" style="display:none; text-align: center; padding: 20px; color: #1A56DB; font-weight: 600; font-size: 1rem;"></div>
                     </div>
-                    <div class="ai-analysis-result" id="aiResultArea" style="display: none;">
-                        <h4>Analyse Claude :</h4>
+
+                    <div class="ai-analysis-result" id="aiResultArea" style="display: none; margin-top: 14px;">
+                        <h4>Analyse IA :</h4>
                         <p id="analysisText"></p>
                         <hr>
                         <h4>Recommandation suggérée :</h4>
@@ -178,8 +234,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn primary" id="takePhotoBtn">Simuler la prise de photo</button>
-                    <button class="btn secondary" id="applyAiBtn" style="display: none;">Appliquer au rapport</button>
+                    <button class="btn secondary" id="applyAiBtn" style="display: none;">✅ Appliquer au rapport</button>
                 </div>
             </div>
         </div>
@@ -263,6 +318,7 @@
     <script>
         // Fix syntax highlighting error for missing quote on body tag in original file maybe
     </script>
+    <!-- Bouton Mode Terrain -->
+    <button class="mode-terrain-btn" onclick="document.body.classList.toggle('mode-terrain'); this.textContent = document.body.classList.contains('mode-terrain') ? '☀️ Mode Normal' : '🏗️ Mode Terrain'">🏗️ Mode Terrain</button>
 </body>
 </html>
-
