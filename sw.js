@@ -1,15 +1,17 @@
-﻿const CACHE_NAME = 'kzo-inspect-v6';
+const CACHE_NAME = 'kzo-inspect-v7';
 const ASSETS = [
   '/',
-  'index.html',
-  'app.html',
-  'landing.css',
+  'KZO_Inspect.html',
   'style.css',
   'app.js',
   'data.js',
   'ai_agents.js',
   'boilerplate.js',
-  'house_bg.png'
+  'config.js',
+  'house_bg.png',
+  'icon-192.png',
+  'icon-512.png',
+  'manifest.json'
 ];
 
 // Install Event
