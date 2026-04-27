@@ -511,8 +511,10 @@ const AIAgents = {
                         resolve("[Simulation] Pour une maison de 1965, soyez particulièrement attentif aux fissures de tassement, à l'absence possible de drain français.");
                     } else if (q.includes("aluminium")) {
                         resolve("[Simulation] Le filage d'aluminium a été utilisé principalement entre 1965 et 1976. Risque d'incendie! Recommander une inspection par un électricien.");
+                    } else if (q.includes("rédige") || q.includes("redige") || q.includes("rapport") || q.includes("observation")) {
+                        resolve("[Simulation] ⚠️ Pour générer automatiquement les textes de rapport, configurez une clé API Groq (gratuite) via l'engrenage ⚙️ en haut à droite.");
                     } else {
-                        resolve("⚠️ Je suis en mode démo hors-ligne. Cliquez sur l'engrenage (⚙️) en haut pour configurer votre clé API (Groq gratuit, Gemini, ChatGPT ou Claude) afin de m'activer !");
+                        resolve("⚠️ Mode démo hors-ligne. Cliquez sur ⚙️ pour configurer votre clé API Groq (gratuit), Gemini, ChatGPT ou Claude.");
                     }
                 }, 1000);
             });

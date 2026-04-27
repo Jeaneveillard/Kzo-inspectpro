@@ -1143,7 +1143,12 @@
             const subCommentBlock = document.createElement('div');
             subCommentBlock.style.cssText = 'margin-top: 16px; padding: 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;';
             subCommentBlock.innerHTML = `
-                <div style="font-weight: 600; font-size: 0.9rem; color: #92400e; margin-bottom: 10px;">📝 Commentaires — ${sub.title}</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                    <div style="font-weight: 600; font-size: 0.9rem; color: #92400e;">📝 Commentaires — ${sub.title}</div>
+                    <button type="button" id="ia_redige_${sub.id}" style="padding:6px 14px; background:linear-gradient(135deg,#1d4ed8,#7c3aed); color:white; border:none; border-radius:20px; font-size:0.8rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px;">
+                        ✨ IA Rédige
+                    </button>
+                </div>
                 <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                     <button type="button" class="sev-btn" data-sev="urgent" data-target="comment_sev_${sub.id}"
                         style="padding: 6px 14px; border-radius: 20px; border: 2px solid #ef4444; background: white; color: #ef4444; font-weight: 700; font-size: 0.8rem; cursor: pointer;">
@@ -1163,9 +1168,21 @@
                     </button>
                     <input type="hidden" id="comment_sev_${sub.id}" value="">
                 </div>
-                <textarea id="comment_txt_${sub.id}" placeholder="Observations de l'inspecteur pour cette sous-section..."
+                <textarea id="comment_txt_${sub.id}" placeholder="Observations de l'inspecteur — ou cliquez ✨ IA Rédige pour générer automatiquement..."
                     style="width:100%; min-height:80px; padding:10px; border:1px solid #fed7aa; border-radius:6px; font-size:0.9rem; font-family:inherit; resize:vertical; background:white;">${(getActiveComments()[sub.id]) ? getActiveComments()[sub.id].text || '' : ''}</textarea>
             `;
+            // Brancher le bouton IA Rédige
+            const iaBtn = subCommentBlock.querySelector(`#ia_redige_${sub.id}`);
+            if (iaBtn) {
+                iaBtn.addEventListener('click', async () => {
+                    iaBtn.textContent = '⏳ Génération...';
+                    iaBtn.disabled = true;
+                    const textarea = subCommentBlock.querySelector(`#comment_txt_${sub.id}`);
+                    await generateSubSectionComment(sub, textarea);
+                    iaBtn.textContent = '✨ IA Rédige';
+                    iaBtn.disabled = false;
+                });
+            }
             div.appendChild(subCommentBlock);
 
             // Wire severity buttons for sub-section
@@ -1373,10 +1390,9 @@
         overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     }
 
-    // --- 3. Intelligence Artificielle (Simulation Claude) ---
+    // --- 3. Intelligence Artificielle ---
     function generateAIContext(field, container) {
-        // Prevent duplicate boxes
-        if(container.querySelector('.ai-box')) return;
+        if (container.querySelector('.ai-box')) return;
 
         const aiBox = document.createElement('div');
         aiBox.className = 'ai-box';
@@ -1388,23 +1404,67 @@
             const narrative = AIAgents.analyzeCheckbox(field.label);
             const compliance = AIAgents.checkCompliance(field.label);
             const reco = AIAgents.getRecommendation(field.label);
+            const semColorClass = severity === 'URGENT' ? 'urgent' : severity === 'MAJEUR' ? 'major' : 'minor';
 
-            let semColorClass = severity === "URGENT" ? "urgent" : severity === "MAJEUR" ? "major" : "minor";
-            
             let html = `
                 <span class="ai-badge ${semColorClass}">${severity}</span>
                 <p style="margin-top:8px">${narrative}</p>
-                <div style="margin-top:8px; font-weight:600; color:#3b82f6;">💡 Reco: ${reco}</div>
+                <div style="margin-top:8px; font-weight:600; color:#3b82f6;">💡 ${reco}</div>
             `;
-            
-            if(compliance.length > 0) {
+            if (compliance.length > 0) {
                 html += `<div style="margin-top:8px; padding:8px; background:#fee2e2; color:#b91c1c; border-radius:4px; font-size:0.85rem;">
-                    <strong>⚠️ Alerte Conformité:</strong> ${compliance.join('<br>')}
+                    <strong>⚠️ Alerte Conformité :</strong> ${compliance.join('<br>')}
                 </div>`;
             }
-
             aiBox.innerHTML = html;
+
+            // Bouton — insérer la recommandation dans le champ commentaire de la sous-section
+            const insertBtn = document.createElement('button');
+            insertBtn.type = 'button';
+            insertBtn.textContent = '📋 Insérer dans commentaire';
+            insertBtn.style.cssText = 'margin-top:10px; padding:6px 14px; background:#1d4ed8; color:white; border:none; border-radius:6px; font-size:0.8rem; cursor:pointer; font-weight:600;';
+            insertBtn.onclick = () => {
+                const subSection = container.closest('.sub-section');
+                const textarea = subSection ? subSection.querySelector('textarea[id^="comment_txt_"]') : null;
+                const line = `[${severity}] ${field.label} — ${reco}`;
+                if (textarea) {
+                    textarea.value = textarea.value.trim() ? textarea.value.trimEnd() + '\n' + line : line;
+                    textarea.dispatchEvent(new Event('input'));
+                    showToast('Recommandation insérée dans le commentaire.', 'success');
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(line);
+                    showToast('Copié dans le presse-papier.', 'info');
+                }
+            };
+            aiBox.appendChild(insertBtn);
         }, 600);
+    }
+
+    // Génère automatiquement le texte d'observation d'une sous-section via IA réelle
+    async function generateSubSectionComment(sub, textarea) {
+        const defects = sub.fields
+            .filter(f => f.type === 'checkbox' && getActiveFieldStates()[f.id] === 'defaut')
+            .map(f => f.label);
+        const toWatch = sub.fields
+            .filter(f => f.type === 'checkbox' && getActiveFieldStates()[f.id] === 'surveiller')
+            .map(f => f.label);
+
+        if (defects.length === 0 && toWatch.length === 0) {
+            showToast('Aucun défaut ou élément à surveiller dans cette sous-section.', 'warning');
+            return;
+        }
+
+        const parts = [];
+        if (defects.length > 0) parts.push(`Défauts observés : ${defects.join(' / ')}`);
+        if (toWatch.length > 0) parts.push(`Éléments à surveiller : ${toWatch.join(' / ')}`);
+
+        const question = `Tu rédiges un rapport d'inspection professionnel selon la norme REIBH 2024 et BNQ 3009-500 au Québec. Section inspectée : "${sub.title}". ${parts.join('. ')}. Rédige 2 à 4 phrases d'observation professionnelle : décris le défaut, le risque potentiel et la recommandation (spécialiste à consulter). Langue : français professionnel. Termine par : "Cette observation est basée sur une inspection visuelle non invasive."`;
+
+        const raw = await AIAgents.askAssistant(question);
+        // Enlever les balises HTML si présentes
+        textarea.value = raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
+        textarea.dispatchEvent(new Event('input'));
+        showToast('Texte généré par IA — vérifiez avant de finaliser le rapport.', 'info');
     }
 
     // --- 4. Photo Vision Modal & Drawing ---
