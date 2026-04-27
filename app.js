@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+﻿document.addEventListener('DOMContentLoaded', () => {
     
     // --- 0. Sécurité et Utilitaires ---
     
@@ -12,12 +12,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Validation de fichier (taille max 10 Mo, types image uniquement)
     function validateFile(file) {
-        const MAX_SIZE = 10 * 1024 * 1024; // 10 Mo
+        const MAX_SIZE = 10 * 1024 * 1024;
         const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
         if (!file) return { valid: false, error: 'Aucun fichier sélectionné.' };
         if (!ALLOWED_TYPES.includes(file.type)) return { valid: false, error: 'Type non supporté. Utilisez JPG, PNG ou WebP.' };
         if (file.size > MAX_SIZE) return { valid: false, error: 'Fichier trop volumineux (max 10 Mo).' };
         return { valid: true };
+    }
+
+    // Toast — remplace alert() natif
+    function showToast(message, type = 'info', duration = 4000) {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+        }
+        const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = `${icons[type] || ''} ${message}`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), duration + 300);
+    }
+
+    // Compression photo avant stockage localStorage (évite la saturation)
+    function compressImage(file, maxWidth = 1200, quality = 0.75) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ratio = Math.min(1, maxWidth / img.width);
+                    canvas.width = Math.round(img.width * ratio);
+                    canvas.height = Math.round(img.height * ratio);
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
     }
 
     // Protection légère : désactiver le clic droit sur les images uniquement
@@ -223,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Supprimer une unité
     function deleteUnit(unitId) {
         if (inspectionData.units.length <= 1) {
-            alert('⚠️ Impossible de supprimer la dernière unité.');
+            showToast('Impossible de supprimer la dernière unité.', 'warning');
             return;
         }
         const unit = inspectionData.units.find(u => u.id === unitId);
@@ -445,7 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.AppCompanyProfile.tvq = tv || '[No TVQ]';
             
             cpModal.style.display = 'none';
-            alert("Profil d'entreprise enregistré avec succès !");
+            showToast("Profil d'entreprise enregistré avec succès !", 'success');
             
             // Update Cover branding if visible
             const coverAppNames = document.querySelectorAll('.cover-app-name');
@@ -579,7 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const file = e.target.files[0];
                 const check = validateFile(file);
                 if (!check.valid) {
-                    alert('⚠️ ' + check.error);
+                    showToast(check.error, 'error');
                     coverInput.value = '';
                     return;
                 }
@@ -960,7 +996,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const file = e.target.files[0];
                         const check = validateFile(file);
                         if (!check.valid) {
-                            alert('⚠️ ' + check.error);
+                            showToast(check.error, 'error');
                             input.value = '';
                             return;
                         }
@@ -1088,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         store[sub.id].push({ url: url });
                         saveAppState();
                     } else {
-                        alert('⚠️ ' + check.error);
+                        showToast(check.error, 'error');
                     }
                 });
                 renderGallery();
@@ -1420,20 +1456,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('closeModal').addEventListener('click', () => { modal.classList.remove('open'); });
 
     takePhotoBtn.addEventListener('click', async () => {
-        // Ouvrir le sélecteur de fichier (galerie ou caméra)
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = 'image/*';
-        fileInput.capture = 'environment'; // Caméra arrière sur mobile
         fileInput.style.display = 'none';
         document.body.appendChild(fileInput);
 
         fileInput.onchange = async (e) => {
+            document.body.removeChild(fileInput); // évite la fuite mémoire
             const file = e.target.files[0];
             if (!file) return;
 
             const check = validateFile(file);
-            if (!check.valid) { alert('⚠️ ' + check.error); return; }
+            if (!check.valid) { showToast(check.error, 'error'); return; }
 
             photoArea.classList.add('taken');
             photoText.innerHTML = '📸 Photo chargée...<br><br>⏳ Analyse par Claude Vision...';
@@ -1461,7 +1496,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!apiKey) {
                     document.getElementById('analysisText').textContent = "⚠️ Aucune clé API configurée. Cliquez sur ⚙️ dans l'Assistant IA pour ajouter votre clé.";
-                    document.getElementById('recommendationText').textContent = "Configurez votre clé API Claude, Gemini ou OpenAI pour activer l'analyse de photos.";
+                    document.getElementById('recommendationText').textContent = "Configurez votre clé API (Groq, Claude, Gemini ou OpenAI) pour activer l'analyse de photos.";
                     aiResultArea.style.display = 'block';
                     return;
                 }
@@ -1526,6 +1561,26 @@ Réponds en français.`;
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                             body: JSON.stringify({
                                 model: 'gpt-4o',
+                                max_tokens: 500,
+                                messages: [{ role: 'user', content: [
+                                    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+                                    { type: 'text', text: prompt }
+                                ]}]
+                            })
+                        });
+                        const data = await resp.json();
+                        const full = data.choices?.[0]?.message?.content || 'Analyse non disponible.';
+                        const parts = full.split(/recommandation|Recommandation/i);
+                        analysisText = parts[0].trim();
+                        recoText = parts[1] ? parts[1].replace(/^[\s:]+/, '') : AIAgents.getRecommendation(fieldLabel);
+
+                    } else if (provider === 'groq') {
+                        // Groq vision — modèle Llama 4 Scout (supporte les images)
+                        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                            body: JSON.stringify({
+                                model: 'meta-llama/llama-4-scout-17b-16e-instruct',
                                 max_tokens: 500,
                                 messages: [{ role: 'user', content: [
                                     { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
@@ -1687,7 +1742,7 @@ Réponds en français.`;
                 sysMsg.style.backgroundColor = '#064e3b';
                 sysMsg.style.color = '#a7f3d0';
                 
-                let providerName = provider === 'openai' ? 'ChatGPT (OpenAI)' : provider === 'anthropic' ? 'Claude (Anthropic)' : 'Gemini (Google)';
+                let providerName = provider === 'openai' ? 'ChatGPT (OpenAI)' : provider === 'anthropic' ? 'Claude (Anthropic)' : provider === 'groq' ? 'Groq (Llama 3.3)' : 'Gemini (Google)';
                 sysMsg.textContent = `Système: Clé enregistrée pour ${providerName}. Je suis connecté au réseau et prêt à vous aider.`;
                 chatHistory.appendChild(sysMsg);
                 chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -1763,7 +1818,7 @@ Réponds en français.`;
     // --- 6. Génération du Rapport Final ---
     function generateFinalReport(unitId) {
         if (typeof BOILERPLATE === 'undefined') {
-            alert("Erreur: Impossible de charger le contenu légal (boilerplate.js manquant).");
+            showToast("Impossible de charger le contenu légal (boilerplate.js manquant).", 'error');
             return;
         }
 
@@ -1771,7 +1826,7 @@ Réponds en français.`;
         const clientName = sanitizeHTML(inspectionData.clientInfo.name) || '';
         const address = sanitizeHTML(inspectionData.clientInfo.address) || '';
         if (!clientName || !address) {
-            alert('⚠️ Veuillez remplir au minimum le nom du client et l\'adresse du bâtiment avant de générer le rapport (Section 1).');
+            showToast('Veuillez remplir le nom du client et l\'adresse du bâtiment avant de générer le rapport (Section 1).', 'warning');
             return;
         }
 
@@ -2221,7 +2276,7 @@ Réponds en français.`;
         renderUnitTabs();
         renderNavigation();
         renderSection(0);
-        alert('✅ Nouvelle inspection démarrée !');
+        showToast('Nouvelle inspection démarrée !', 'success');
     }
 
     // Ajouter bouton Nouvelle Inspection dans la topbar
@@ -2251,7 +2306,7 @@ Réponds en français.`;
     // Bouton de sauvegarde manuelle
     const forceSync = () => {
         saveAppState();
-        alert("✅ Données sauvegardées localement dans votre iPad.");
+        showToast('Données sauvegardées localement.', 'success');
     };
 
 

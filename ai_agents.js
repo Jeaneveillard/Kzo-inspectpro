@@ -512,7 +512,7 @@ const AIAgents = {
                     } else if (q.includes("aluminium")) {
                         resolve("[Simulation] Le filage d'aluminium a été utilisé principalement entre 1965 et 1976. Risque d'incendie! Recommander une inspection par un électricien.");
                     } else {
-                        resolve("⚠️ Je suis en mode démo hors-ligne. Cliquez sur l'engrenage (⚙️) en haut pour configurer votre clé API (Gemini, ChatGPT ou Claude) afin de m'activer !");
+                        resolve("⚠️ Je suis en mode démo hors-ligne. Cliquez sur l'engrenage (⚙️) en haut pour configurer votre clé API (Groq gratuit, Gemini, ChatGPT ou Claude) afin de m'activer !");
                     }
                 }, 1000);
             });
@@ -578,16 +578,16 @@ const AIAgents = {
             } else if (provider === 'anthropic') {
                 const response = await fetch("https://api.anthropic.com/v1/messages", {
                     method: "POST",
-                    headers: { 
-                        "Content-Type": "application/json", 
+                    headers: {
+                        "Content-Type": "application/json",
                         "x-api-key": apiKey,
                         "anthropic-version": "2023-06-01",
                         "anthropic-dangerous-direct-browser-access": "true"
                     },
-                    body: JSON.stringify({ 
-                        model: "claude-sonnet-4-5", 
+                    body: JSON.stringify({
+                        model: "claude-sonnet-4-5",
                         system: "Tu es l'assistant IA expert d'un Inspecteur en Bâtiment d'Habitation certifié RBQ au Québec. Tu maîtrises parfaitement : la norme BNQ 3009-500 (Pratiques pour l'inspection en vue d'une transaction immobilière), le REIBH 2024 (RBQ), le Code National du Bâtiment (CNB 2020), le Code de Construction du Québec, le Code Électrique du Québec (CEQ), le Code de Plomberie du Québec, les normes AIBQ, InterNACHI et Réseau IBC, ainsi que les réglementations spécifiques au Québec (pyrite, pyrrhotite, amiante, radon, plomb). Tu connais les normes cheminée (NFPA 211), gaz (CSA B149.1), garage attaché (porte coupe-feu, gypse Type X, CO), matières dangereuses et systèmes mécaniques. Réponds de manière experte, précise, concise en référençant toujours la norme ou le code applicable. Recommande toujours la sécurité et l'évaluation par un spécialiste si nécessaire.",
-                        messages: [{role: "user", content: question }], 
+                        messages: [{role: "user", content: question }],
                         max_tokens: 1024
                     })
                 });
@@ -597,6 +597,26 @@ const AIAgents = {
                 }
                 const data = await response.json();
                 textResponse = data.content?.[0]?.text;
+
+            } else if (provider === 'groq') {
+                const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [
+                            { role: "system", content: "Tu es l'assistant IA expert d'un Inspecteur en Bâtiment d'Habitation certifié RBQ au Québec. Tu maîtrises parfaitement : la norme BNQ 3009-500 (Pratiques pour l'inspection en vue d'une transaction immobilière), le REIBH 2024 (RBQ), le Code National du Bâtiment (CNB 2020), le Code de Construction du Québec, le Code Électrique du Québec (CEQ), le Code de Plomberie du Québec, les normes AIBQ, InterNACHI et Réseau IBC, ainsi que les réglementations spécifiques au Québec (pyrite, pyrrhotite, amiante, radon, plomb). Tu connais les normes cheminée (NFPA 211), gaz (CSA B149.1), garage attaché (porte coupe-feu, gypse Type X, CO), matières dangereuses et systèmes mécaniques. Réponds de manière experte, précise, concise en référençant toujours la norme ou le code applicable. Recommande toujours la sécurité et l'évaluation par un spécialiste si nécessaire." },
+                            { role: "user", content: question }
+                        ],
+                        max_tokens: 1024
+                    })
+                });
+                if (!response.ok) {
+                    const errData = await response.json();
+                    return "❌ Erreur API Groq : " + (errData.error?.message || response.status);
+                }
+                const data = await response.json();
+                textResponse = data.choices?.[0]?.message?.content;
             }
             
             if (!textResponse) {

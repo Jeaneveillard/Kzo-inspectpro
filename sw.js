@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kzo-inspect-v7';
+﻿const CACHE_NAME = 'kzo-inspect-v9';
 const ASSETS = [
   '/',
   'KZO_Inspect.html',
@@ -7,11 +7,11 @@ const ASSETS = [
   'data.js',
   'ai_agents.js',
   'boilerplate.js',
-  'config.js',
   'house_bg.png',
   'icon-192.png',
   'icon-512.png',
   'manifest.json'
+  // config.js exclu intentionnellement : contient des clés API sensibles
 ];
 
 // Install Event
