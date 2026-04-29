@@ -1142,12 +1142,32 @@
             // --- Champ Commentaire + Sévérité (sous-section) ---
             const subCommentBlock = document.createElement('div');
             subCommentBlock.style.cssText = 'margin-top: 16px; padding: 14px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;';
+            // Construire les options du dropdown de modèles pour cette sous-section.
+            const _tpls = (typeof getCommentTemplates === 'function')
+                ? getCommentTemplates(section.id, sub.id)
+                : { positive: [], negative: [] };
+            const _truncate = (s, n = 75) => s.length > n ? s.slice(0, n) + '…' : s;
+            const _posOptions = _tpls.positive.map((t, i) =>
+                `<option value="p:${i}">${sanitizeHTML(_truncate(t))}</option>`
+            ).join('');
+            const _negOptions = _tpls.negative.map((t, i) =>
+                `<option value="n:${i}">${sanitizeHTML(_truncate(t))}</option>`
+            ).join('');
+
             subCommentBlock.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
                     <div style="font-weight: 600; font-size: 0.9rem; color: #92400e;">📝 Commentaires — ${sub.title}</div>
-                    <button type="button" id="ia_redige_${sub.id}" style="padding:6px 14px; background:linear-gradient(135deg,#1d4ed8,#7c3aed); color:white; border:none; border-radius:20px; font-size:0.8rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px;">
-                        ✨ IA Rédige
-                    </button>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                        <select id="modeles_${sub.id}" title="Insérer un modèle de phrase"
+                            style="padding:6px 10px; border-radius:18px; border:1px solid #cbd5e1; background:white; color:#475569; font-size:0.78rem; font-weight:600; cursor:pointer; max-width:220px;">
+                            <option value="" disabled selected>📋 Modèles…</option>
+                            <optgroup label="✅ Conforme">${_posOptions}</optgroup>
+                            <optgroup label="❌ Défaut">${_negOptions}</optgroup>
+                        </select>
+                        <button type="button" id="ia_redige_${sub.id}" style="padding:6px 14px; background:linear-gradient(135deg,#1d4ed8,#7c3aed); color:white; border:none; border-radius:20px; font-size:0.8rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px;">
+                            ✨ IA Rédige
+                        </button>
+                    </div>
                 </div>
                 <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                     <button type="button" class="sev-btn" data-sev="urgent" data-target="comment_sev_${sub.id}"
@@ -1186,6 +1206,27 @@
                     await generateSubSectionComment(sub, textarea);
                     iaBtn.textContent = '✨ IA Rédige';
                     iaBtn.disabled = false;
+                });
+            }
+
+            // Brancher le dropdown de modèles : insère la phrase choisie dans la textarea.
+            const tplSelect = subCommentBlock.querySelector(`#modeles_${sub.id}`);
+            if (tplSelect) {
+                tplSelect.addEventListener('change', () => {
+                    const val = tplSelect.value;
+                    if (!val) return;
+                    const [kind, idxStr] = val.split(':');
+                    const idx = parseInt(idxStr, 10);
+                    const phrase = (kind === 'p' ? _tpls.positive[idx] : _tpls.negative[idx]) || '';
+                    if (!phrase) return;
+                    const ta = subCommentBlock.querySelector(`#comment_txt_${sub.id}`);
+                    if (!ta) return;
+                    ta.value = ta.value.trim()
+                        ? ta.value.trimEnd() + '\n' + phrase
+                        : phrase;
+                    ta.dispatchEvent(new Event('input'));
+                    tplSelect.selectedIndex = 0; // reset sur "📋 Modèles…"
+                    showToast('Modèle inséré — modifiez avant de finaliser le rapport.', 'success');
                 });
             }
             div.appendChild(subCommentBlock);
