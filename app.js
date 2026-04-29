@@ -1169,8 +1169,13 @@
                     <input type="hidden" id="comment_sev_${sub.id}" value="">
                 </div>
                 <textarea id="comment_txt_${sub.id}" placeholder="Observations de l'inspecteur — ou cliquez ✨ IA Rédige pour générer automatiquement..."
-                    style="width:100%; min-height:80px; padding:10px; border:1px solid #fed7aa; border-radius:6px; font-size:0.9rem; font-family:inherit; resize:vertical; background:white;">${(getActiveComments()[sub.id]) ? getActiveComments()[sub.id].text || '' : ''}</textarea>
+                    style="width:100%; min-height:80px; padding:10px; border:1px solid #fed7aa; border-radius:6px; font-size:0.9rem; font-family:inherit; resize:vertical; background:white;"></textarea>
             `;
+            // Sécurité : assigner le contenu via .value au lieu d'interpoler dans innerHTML
+            // (sinon "</textarea><script>..." injecté dans un commentaire casse la balise).
+            const _existingComment = (getActiveComments()[sub.id]) ? getActiveComments()[sub.id].text || '' : '';
+            const _ta = subCommentBlock.querySelector(`#comment_txt_${sub.id}`);
+            if (_ta) _ta.value = _existingComment;
             // Brancher le bouton IA Rédige
             const iaBtn = subCommentBlock.querySelector(`#ia_redige_${sub.id}`);
             if (iaBtn) {
@@ -1254,8 +1259,12 @@
                     <input type="hidden" id="sec_sev_${secId}" value="">
                 </div>
                 <textarea id="sec_txt_${secId}" placeholder="Résumé global de l'inspecteur pour cette section..."
-                    style="width:100%; min-height:90px; padding:12px; border:1px solid #93c5fd; border-radius:6px; font-size:0.95rem; font-family:inherit; resize:vertical; background:white;">${(getActiveSectionComments()[secId]) ? getActiveSectionComments()[secId].text || '' : ''}</textarea>
+                    style="width:100%; min-height:90px; padding:12px; border:1px solid #93c5fd; border-radius:6px; font-size:0.95rem; font-family:inherit; resize:vertical; background:white;"></textarea>
             `;
+            // Sécurité : assigner via .value plutôt qu'interpoler dans innerHTML.
+            const _existingSecComment = (getActiveSectionComments()[secId]) ? getActiveSectionComments()[secId].text || '' : '';
+            const _secTa = secCommentBlock.querySelector(`#sec_txt_${secId}`);
+            if (_secTa) _secTa.value = _existingSecComment;
             dynamicContent.appendChild(secCommentBlock);
 
             // Wire section severity buttons (unité active)
@@ -1367,7 +1376,7 @@
             btn.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <div style="font-weight: 700; color: #0f172a; font-size: 1.05rem;">🏠 ${unit.name}</div>
+                        <div style="font-weight: 700; color: #0f172a; font-size: 1.05rem;">🏠 ${sanitizeHTML(unit.name)}</div>
                         <div style="font-size: 0.82rem; color: #64748b; margin-top: 4px;">
                             ${urg > 0 ? `<span style="color:#dc2626;">🔴 ${urg} urgent${urg>1?'s':''}</span>` : ''}
                             ${maj > 0 ? ` <span style="color:#d97706;">🟠 ${maj} majeur${maj>1?'s':''}</span>` : ''}
@@ -1461,8 +1470,12 @@
         const question = `Tu rédiges un rapport d'inspection professionnel selon la norme REIBH 2024 et BNQ 3009-500 au Québec. Section inspectée : "${sub.title}". ${parts.join('. ')}. Rédige 2 à 4 phrases d'observation professionnelle : décris le défaut, le risque potentiel et la recommandation (spécialiste à consulter). Langue : français professionnel. Termine par : "Cette observation est basée sur une inspection visuelle non invasive."`;
 
         const raw = await AIAgents.askAssistant(question);
-        // Enlever les balises HTML si présentes
-        textarea.value = raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim();
+        // askAssistant échappe déjà le HTML brut puis ré-injecte <strong>/<br>.
+        // On enlève ces tags whitelistés et on décode les entités pour obtenir du texte propre.
+        const stripped = raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
+        const decoder = document.createElement('div');
+        decoder.innerHTML = stripped;
+        textarea.value = decoder.textContent.trim();
         textarea.dispatchEvent(new Event('input'));
         showToast('Texte généré par IA — vérifiez avant de finaliser le rapport.', 'info');
     }
@@ -1916,12 +1929,18 @@ Réponds en français.`;
             ? new Date(inspectionData['inspection_date']).toLocaleDateString('fr-CA', {year:'numeric', month:'long', day:'numeric'})
             : new Date().toLocaleDateString('fr-CA', {year:'numeric', month:'long', day:'numeric'});
 
-        const meteo = document.getElementById('prop_weather')?.value || '';
-        const temperature = document.getElementById('prop_temp')?.value || '';
-        const superficie = document.getElementById('prop_area')?.value || '';
-        const annee = document.getElementById('prop_year')?.value || '';
-        const typeBatiment = document.getElementById('prop_type')?.value || '';
-        const typeGarage = document.getElementById('prop_garage')?.value || '';
+        // Sécurité XSS : tous les champs libres tapés par l'inspecteur ou le client
+        // sont sanitisés avant d'être interpolés dans le HTML du rapport.
+        const meteo = sanitizeHTML(document.getElementById('prop_weather')?.value || '');
+        const temperature = sanitizeHTML(document.getElementById('prop_temp')?.value || '');
+        const superficie = sanitizeHTML(document.getElementById('prop_area')?.value || '');
+        const annee = sanitizeHTML(document.getElementById('prop_year')?.value || '');
+        const typeBatiment = sanitizeHTML(document.getElementById('prop_type')?.value || '');
+        const typeGarage = sanitizeHTML(document.getElementById('prop_garage')?.value || '');
+        const safeNorme = sanitizeHTML(norme);
+        const safeUnitName = sanitizeHTML(unitName);
+        const safeInspectorName = sanitizeHTML(inspectorName);
+        const safeDossierId = sanitizeHTML(String(inspectionData.id || ''));
 
         // Compter défauts et à surveiller DANS L'UNITÉ
         let totalUrgents = 0, totalMajeurs = 0, totalSurveiller = 0, totalConformes = 0;
@@ -1963,7 +1982,7 @@ Réponds en français.`;
 
                     ${isMultiMode ? `
                     <div style="display: inline-block; background: #1A56DB; color: white; padding: 10px 22px; border-radius: 8px; font-weight: 700; font-size: 1.1rem; margin-bottom: 30px; width: fit-content; box-shadow: 0 4px 16px rgba(26,86,219,0.4);">
-                        🏠 ${unitName}
+                        🏠 ${safeUnitName}
                     </div>
                     ` : `<div style="margin-bottom:20px;"></div>`}
 
@@ -1978,7 +1997,7 @@ Réponds en français.`;
                         </div>
                         <div>
                             <div style="font-size: 0.75rem; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;">Propriété inspectée</div>
-                            <div style="font-size: 1rem; color: #e2e8f0;">${address}${isMultiMode ? `<br><span style="color:#60a5fa; font-weight:600;">— ${unitName}</span>` : ''}</div>
+                            <div style="font-size: 1rem; color: #e2e8f0;">${address}${isMultiMode ? `<br><span style="color:#60a5fa; font-weight:600;">— ${safeUnitName}</span>` : ''}</div>
                         </div>
                         <div>
                             <div style="font-size: 0.75rem; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;">Date de l'inspection</div>
@@ -1986,13 +2005,13 @@ Réponds en français.`;
                         </div>
                         <div>
                             <div style="font-size: 0.75rem; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;">Inspecteur</div>
-                            <div style="font-size: 1rem; color: #e2e8f0;">${inspectorName}</div>
+                            <div style="font-size: 1rem; color: #e2e8f0;">${safeInspectorName}</div>
                         </div>
                     </div>
                 </div>
 
                 <div style="margin-top: 60px; padding-top: 24px; border-top: 1px solid #1e293b; display: flex; justify-content: space-between; font-size: 0.8rem; color: #475569;">
-                    <span>No dossier : ${inspectionData.id}${isMultiMode ? ` — ${unitName}` : ''}</span>
+                    <span>No dossier : ${safeDossierId}${isMultiMode ? ` — ${safeUnitName}` : ''}</span>
                     <span>Conforme BNQ 3009-500 · REIBH 2024</span>
                 </div>
             </div>
@@ -2009,17 +2028,17 @@ Réponds en français.`;
                     ${annee ? `<div><strong>Année de construction :</strong> ${annee}</div>` : ''}
                     ${meteo ? `<div><strong>Météo lors de l'inspection :</strong> ${meteo}</div>` : ''}
                     ${temperature ? `<div><strong>Température extérieure :</strong> ${temperature} °C</div>` : ''}
-                    <div><strong>Norme applicable :</strong> ${norme}</div>
+                    <div><strong>Norme applicable :</strong> ${safeNorme}</div>
                     <div><strong>Date du rapport :</strong> ${new Date().toLocaleDateString('fr-CA')}</div>
                 </div>
             </div>
         `;
 
         // FACTURE
-        html += BOILERPLATE.facture(clientName, address, prix, inspectionData.id);
+        html += BOILERPLATE.facture(clientName, address, sanitizeHTML(String(prix)), safeDossierId);
 
         // LETTRE D'INTRO
-        html += BOILERPLATE.lettreIntro(clientName, norme, inspectorName, signatureUrl, sealUrl);
+        html += BOILERPLATE.lettreIntro(clientName, safeNorme, safeInspectorName, signatureUrl, sealUrl);
 
         // COMMENT LIRE CE RAPPORT
         if (BOILERPLATE.commentLire) html += BOILERPLATE.commentLire;
@@ -2059,12 +2078,12 @@ Réponds en français.`;
                 <div style="padding: 25px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 30px;">
                     <p style="margin-bottom: 16px; font-size: 1.1rem;"><strong>État général au moment de l'inspection :</strong><br><br>
                         <span style="background: ${hasIssues && totalUrgents > 0 ? '#fef2f2' : hasIssues ? '#fffbeb' : '#ecfdf5'}; color: ${hasIssues && totalUrgents > 0 ? '#dc2626' : hasIssues ? '#d97706' : '#059669'}; padding: 8px 16px; border-radius: 6px; font-weight: bold; border: 1px solid currentColor; display: inline-block;">
-                            ${document.getElementById('rap_etat_general')?.value || 'Non évalué'}
+                            ${sanitizeHTML(document.getElementById('rap_etat_general')?.value || 'Non évalué')}
                         </span>
                     </p>
-                    <p style="margin-bottom: 16px; font-size: 1rem; line-height: 1.7;"><strong>Travaux prioritaires :</strong><br>${document.getElementById('rap_priorite')?.value || 'Aucun documenté.'}</p>
-                    <p style="font-size: 1rem; line-height: 1.7;"><strong>Notes de l'inspecteur :</strong><br>${document.getElementById('rap_notes')?.value || 'Aucune observation supplémentaire.'}</p>
-                    ${document.getElementById('rap_entretien')?.value ? `<p style="font-size: 1rem; line-height: 1.7; margin-top: 16px;"><strong>Recommandations d'entretien préventif :</strong><br>${document.getElementById('rap_entretien').value}</p>` : ''}
+                    <p style="margin-bottom: 16px; font-size: 1rem; line-height: 1.7;"><strong>Travaux prioritaires :</strong><br>${sanitizeHTML(document.getElementById('rap_priorite')?.value || 'Aucun documenté.').replace(/\n/g, '<br>')}</p>
+                    <p style="font-size: 1rem; line-height: 1.7;"><strong>Notes de l'inspecteur :</strong><br>${sanitizeHTML(document.getElementById('rap_notes')?.value || 'Aucune observation supplémentaire.').replace(/\n/g, '<br>')}</p>
+                    ${document.getElementById('rap_entretien')?.value ? `<p style="font-size: 1rem; line-height: 1.7; margin-top: 16px;"><strong>Recommandations d'entretien préventif :</strong><br>${sanitizeHTML(document.getElementById('rap_entretien').value).replace(/\n/g, '<br>')}</p>` : ''}
                 </div>
             </div>
         `;
@@ -2087,7 +2106,7 @@ Réponds en français.`;
                 sub.fields.forEach(field => {
                     if (field.type === 'select' || field.type === 'text' || field.type === 'number' || field.type === 'date') {
                         const val = document.getElementById(field.id)?.value;
-                        if (val) infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem;"><strong style="color: #374151;">${field.label} :</strong> <span style="color: #0f172a;">${val}</span></li>`;
+                        if (val) infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem;"><strong style="color: #374151;">${field.label} :</strong> <span style="color: #0f172a;">${sanitizeHTML(val)}</span></li>`;
                     }
                     if (field.type === 'checkbox') {
                         const state = unitFieldStates[field.id];
@@ -2169,7 +2188,7 @@ Réponds en français.`;
                             <strong style="color:#1e293b; font-size:0.95rem;">${sub.title}</strong>
                             ${sc.severity ? `<span style="background:${sevColor}; color:white; padding:2px 8px; border-radius:10px; font-size:0.78rem; font-weight:700;">${sevLabels[sc.severity] || sc.severity}</span>` : ''}
                         </div>
-                        ${sc.text ? `<p style="color:#334155; font-size:0.9rem; line-height:1.6; margin:0; white-space:pre-wrap;">${sc.text}</p>` : ''}
+                        ${sc.text ? `<p style="color:#334155; font-size:0.9rem; line-height:1.6; margin:0; white-space:pre-wrap;">${sanitizeHTML(sc.text)}</p>` : ''}
                     </div>`;
                 });
             }
@@ -2185,7 +2204,7 @@ Réponds en français.`;
                         <strong style="color:#1e40af; font-size:0.95rem;">🗂️ Commentaire global</strong>
                         ${secC.severity ? `<span style="background:${sevColors[secC.severity]||'#64748b'}; color:white; padding:3px 10px; border-radius:10px; font-size:0.82rem; font-weight:700;">${sevLabels[secC.severity]||secC.severity}</span>` : ''}
                     </div>
-                    ${secC.text ? `<p style="color:#1e293b; font-size:0.95rem; line-height:1.7; margin:0; white-space:pre-wrap;">${secC.text}</p>` : ''}
+                    ${secC.text ? `<p style="color:#1e293b; font-size:0.95rem; line-height:1.7; margin:0; white-space:pre-wrap;">${sanitizeHTML(secC.text)}</p>` : ''}
                 </div>`;
             }
 
@@ -2193,13 +2212,13 @@ Réponds en français.`;
         });
 
         // ATTESTATION
-        if (BOILERPLATE.attestation) html += BOILERPLATE.attestation(clientName, inspectorName, signatureUrl, sealUrl);
+        if (BOILERPLATE.attestation) html += BOILERPLATE.attestation(clientName, safeInspectorName, signatureUrl, sealUrl);
 
         // LETTRE DE REMERCIEMENT
         if (BOILERPLATE.lettreRemerciement) {
             html += BOILERPLATE.lettreRemerciement(
-                clientName, address, inspectorName,
-                window.AppCompanyProfile ? window.AppCompanyProfile.name : 'KZO InspectPro',
+                clientName, address, safeInspectorName,
+                sanitizeHTML(window.AppCompanyProfile ? window.AppCompanyProfile.name : 'KZO InspectPro'),
                 signatureUrl
             );
         }
@@ -2208,7 +2227,7 @@ Réponds en français.`;
         html += BOILERPLATE.guideEntretien;
 
         // ANNEXE NORMES
-        html += BOILERPLATE.normesPratique(norme);
+        html += BOILERPLATE.normesPratique(safeNorme);
 
         reportContent.innerHTML = html;
         reportModal.style.display = 'flex';

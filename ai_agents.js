@@ -625,8 +625,14 @@ const AIAgents = {
                 return "Je suis désolé, je n'ai pas pu générer une réponse claire.";
             }
 
-            // Convertir le Markdown basique en HTML affichable dans le chat
-            return textResponse
+            // Sécurité : échapper tout HTML brut renvoyé par le LLM AVANT d'appliquer
+            // le markdown maison. Sans ça, une prompt-injection pourrait faire renvoyer
+            // <script> ou <img onerror=...> qui s'exécuterait via innerHTML côté chat.
+            const escapeDiv = document.createElement('div');
+            escapeDiv.textContent = textResponse;
+            const safe = escapeDiv.innerHTML;
+
+            return safe
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                 .replace(/\n\n/g, '<br><br>')
                 .replace(/\n/g, '<br>');

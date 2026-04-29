@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'kzo-inspect-v10';
+const CACHE_NAME = 'kzo-inspect-v11';
 const ASSETS = [
   '/',
   'KZO_Inspect.html',
@@ -34,12 +34,23 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event (Network first, fallback to cache for offline)
+// Fetch Event
+// IMPORTANT : ne JAMAIS intercepter ni cacher les requêtes vers les API IA externes.
+// Les URLs Gemini contiennent la clé API en query string ("?key=AIzaSy...") — les
+// mettre en cache exposerait la clé dans CacheStorage.
 self.addEventListener('fetch', (event) => {
+  const reqUrl = new URL(event.request.url);
+  const sameOrigin = reqUrl.origin === self.location.origin;
+  const isGet = event.request.method === 'GET';
+
+  // Tout ce qui n'est pas un GET de notre propre origine : laisser passer sans interception.
+  if (!sameOrigin || !isGet) {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        // Update cache with the fresh response
         const responseClone = networkResponse.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
         return networkResponse;
@@ -47,4 +58,3 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request))
   );
 });
-
