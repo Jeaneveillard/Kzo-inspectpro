@@ -219,7 +219,11 @@ function generateFieldVariants(label) {
         [/\bnon[\s-]fonctionnel(le)?s?\b/gi, (m) => m.endsWith('les') ? 'fonctionnelles' : m.endsWith('le') ? 'fonctionnelle' : m.endsWith('ls') ? 'fonctionnels' : 'fonctionnel'],
 
         // États dégradés
-        [/\bdéfectu(eux|euse)s?\b/gi, 'fonctionn$1'],
+        // Bug fix : "défectu(eux|euse)" → "fonctionn(el|elle)" — le radical
+        // "fonctionn" prend une terminaison différente de "défectu", donc on
+        // sépare en 2 patterns explicites.
+        [/\bdéfectueuses?\b/gi, (m) => m.endsWith('s') ? 'fonctionnelles' : 'fonctionnelle'],
+        [/\bdéfectueux\b/gi, 'fonctionnel'],
         [/\bdégradée?s?\b/gi, 'en bon état'],
         [/\bdétériorée?s?\b/gi, 'en bon état'],
         [/\bendommagée?s?\b/gi, (m) => m.endsWith('es') ? 'intactes' : m.endsWith('s') ? 'intacts' : m.endsWith('e') ? 'intacte' : 'intact'],
@@ -230,6 +234,7 @@ function generateFieldVariants(label) {
         // Corrosion / rouille
         [/\bcorrodée?s?\b/gi, 'sans corrosion'],
         [/\bcorrosion\b/gi, 'aucune corrosion'],
+        [/\brouillée?s?\b/gi, 'sans rouille'],
         [/\brouille\b/gi, 'aucune rouille'],
 
         // Fissures / fuites / humidité
@@ -251,7 +256,10 @@ function generateFieldVariants(label) {
         [/\bsurchauffe\b/gi, 'sans surchauffe'],
 
         // "Risque de" — formulation conditionnelle
-        [/\brisques? d['e]\s*/gi, 'aucun risque d\''],
+        // Bug fix : on sépare "risque d'" et "risque de" pour préserver
+        // l'espace après "de" et l'apostrophe au bon endroit.
+        [/\brisques? d'/gi, "aucun risque d'"],
+        [/\brisques? de\b/gi, 'aucun risque de'],
     ];
 
     let positive = label;
