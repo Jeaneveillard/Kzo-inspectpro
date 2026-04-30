@@ -704,13 +704,50 @@
                         stateSelect.value = activeStates[field.id];
                     }
 
-                    // Texte du label
-                    const labelSpan = document.createElement('span');
-                    labelSpan.textContent = field.label;
-                    labelSpan.style.cssText = 'font-size: 0.92rem; line-height: 1.5; color: #334155; flex: 1; padding-top: 6px;';
+                    // --- Dropdown du label avec variantes positive / négative ---
+                    // Évite le wrapping vertical du texte sur tablette et permet de choisir
+                    // d'un coup la formulation et l'état du champ.
+                    const variants = (typeof generateFieldVariants === 'function')
+                        ? generateFieldVariants(field.label)
+                        : { positive: field.label + ' — en bon état', negative: field.label };
+
+                    const labelSelect = document.createElement('select');
+                    labelSelect.id = field.id + '_variant';
+                    labelSelect.title = field.label;
+                    labelSelect.style.cssText = 'flex:1; min-width:0; padding:6px 10px; border-radius:8px; border:1px solid #cbd5e1; background:white; color:#334155; font-size:0.92rem; line-height:1.4; cursor:pointer; max-width:100%;';
+
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = '';
+                    defaultOpt.textContent = field.label;
+                    labelSelect.appendChild(defaultOpt);
+
+                    const posGroup = document.createElement('optgroup');
+                    posGroup.label = '✅ Conforme';
+                    const posOpt = document.createElement('option');
+                    posOpt.value = 'conforme';
+                    posOpt.textContent = variants.positive;
+                    posGroup.appendChild(posOpt);
+                    labelSelect.appendChild(posGroup);
+
+                    const negGroup = document.createElement('optgroup');
+                    negGroup.label = '❌ Défaut';
+                    const negOpt = document.createElement('option');
+                    negOpt.value = 'defaut';
+                    negOpt.textContent = variants.negative;
+                    negGroup.appendChild(negOpt);
+                    labelSelect.appendChild(negGroup);
+
+                    // Choisir une variante synchronise le state select et applique l'état.
+                    labelSelect.addEventListener('change', () => {
+                        const v = labelSelect.value;
+                        if (v === 'conforme' || v === 'defaut') {
+                            stateSelect.value = v;
+                            applyState(v);
+                        }
+                    });
 
                     topRow.appendChild(stateSelect);
-                    topRow.appendChild(labelSpan);
+                    topRow.appendChild(labelSelect);
                     itemWrapper.appendChild(topRow);
 
                     // Input hidden pour compatibilité rapport (checked = défaut)
@@ -745,6 +782,14 @@
 
                         // Sync checkbox caché pour le rapport
                         input.checked = (val === 'defaut');
+
+                        // Sync le label select : afficher la variante correspondante
+                        // si le state est conforme ou defaut, sinon revenir au label par défaut.
+                        if (labelSelect) {
+                            if (val === 'conforme') labelSelect.value = 'conforme';
+                            else if (val === 'defaut') labelSelect.value = 'defaut';
+                            else labelSelect.value = '';
+                        }
 
                         // IA uniquement si défaut
                         if (val === 'defaut') {

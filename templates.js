@@ -192,6 +192,89 @@ const COMMENT_TEMPLATES = {
 };
 
 // ============================================================
+//  generateFieldVariants(label)
+//  À partir d'un label de champ checkbox (ex. "Membrane pare-vapeur
+//  au sol absente ou mal installée"), produit deux reformulations :
+//    { positive: "Membrane pare-vapeur au sol présente et bien installée",
+//      negative: "Membrane pare-vapeur au sol absente ou mal installée" }
+//
+//  Utilisé pour offrir un dropdown compact à la place du label texte
+//  qui wrappe sur tablette.
+// ============================================================
+function generateFieldVariants(label) {
+    if (!label || typeof label !== 'string') {
+        return { positive: '', negative: '' };
+    }
+
+    // Paires de patterns négatifs → opposés positifs.
+    // Ordre : du plus spécifique au plus générique.
+    const replacements = [
+        // "absent / manquant"
+        [/\babsente?s?\b/gi, (m) => m.endsWith('es') ? 'présentes' : m.endsWith('s') ? 'présents' : m.endsWith('e') ? 'présente' : 'présent'],
+        [/\bmanquante?s?\b/gi, (m) => m.endsWith('es') ? 'présentes' : m.endsWith('s') ? 'présents' : m.endsWith('e') ? 'présente' : 'présent'],
+
+        // "mal installé / non conforme / non fonctionnel"
+        [/\bmal install(é{1,2}e?s?)\b/gi, 'bien install$1'],
+        [/\bnon[\s-]conformes?\b/gi, (m) => m.endsWith('s') ? 'conformes' : 'conforme'],
+        [/\bnon[\s-]fonctionnel(le)?s?\b/gi, (m) => m.endsWith('les') ? 'fonctionnelles' : m.endsWith('le') ? 'fonctionnelle' : m.endsWith('ls') ? 'fonctionnels' : 'fonctionnel'],
+
+        // États dégradés
+        [/\bdéfectu(eux|euse)s?\b/gi, 'fonctionn$1'],
+        [/\bdégradée?s?\b/gi, 'en bon état'],
+        [/\bdétériorée?s?\b/gi, 'en bon état'],
+        [/\bendommagée?s?\b/gi, (m) => m.endsWith('es') ? 'intactes' : m.endsWith('s') ? 'intacts' : m.endsWith('e') ? 'intacte' : 'intact'],
+        [/\busée?s?\b/gi, 'en bon état'],
+        [/\bcassée?s?\b/gi, (m) => m.endsWith('es') ? 'intactes' : m.endsWith('s') ? 'intacts' : m.endsWith('e') ? 'intacte' : 'intact'],
+        [/\bbrisée?s?\b/gi, (m) => m.endsWith('es') ? 'intactes' : m.endsWith('s') ? 'intacts' : m.endsWith('e') ? 'intacte' : 'intact'],
+
+        // Corrosion / rouille
+        [/\bcorrodée?s?\b/gi, 'sans corrosion'],
+        [/\bcorrosion\b/gi, 'aucune corrosion'],
+        [/\brouille\b/gi, 'aucune rouille'],
+
+        // Fissures / fuites / humidité
+        [/\bfissures?\b/gi, 'aucune fissure'],
+        [/\bfuites?\b/gi, 'aucune fuite'],
+        [/\bmoisissures?\b/gi, 'aucune moisissure'],
+        [/\bpourritures?\b/gi, 'sans pourriture'],
+        [/\binfiltrations?\b/gi, 'aucune infiltration'],
+
+        // Obstructions / desserrements
+        [/\bbouchée?s?\b/gi, (m) => m.endsWith('es') ? 'dégagées' : m.endsWith('s') ? 'dégagés' : m.endsWith('e') ? 'dégagée' : 'dégagé'],
+        [/\bobstruée?s?\b/gi, (m) => m.endsWith('es') ? 'dégagées' : m.endsWith('s') ? 'dégagés' : m.endsWith('e') ? 'dégagée' : 'dégagé'],
+        [/\bdesserrée?s?\b/gi, (m) => m.endsWith('es') ? 'serrées' : m.endsWith('s') ? 'serrés' : m.endsWith('e') ? 'serrée' : 'serré'],
+        [/\binstables?\b/gi, (m) => m.endsWith('s') ? 'stables' : 'stable'],
+
+        // Qualifiants
+        [/\binsuffisante?s?\b/gi, (m) => m.endsWith('es') ? 'suffisantes' : m.endsWith('s') ? 'suffisants' : m.endsWith('e') ? 'suffisante' : 'suffisant'],
+        [/\binadéquate?s?\b/gi, (m) => m.endsWith('es') ? 'adéquates' : m.endsWith('s') ? 'adéquats' : m.endsWith('e') ? 'adéquate' : 'adéquat'],
+        [/\bsurchauffe\b/gi, 'sans surchauffe'],
+
+        // "Risque de" — formulation conditionnelle
+        [/\brisques? d['e]\s*/gi, 'aucun risque d\''],
+    ];
+
+    let positive = label;
+    let foundMatch = false;
+
+    for (const [pattern, replacement] of replacements) {
+        // Recréer la regex à chaque tour pour éviter l'état persistant du flag /g.
+        const re = new RegExp(pattern.source, pattern.flags);
+        if (re.test(positive)) {
+            positive = positive.replace(new RegExp(pattern.source, pattern.flags), replacement);
+            foundMatch = true;
+        }
+    }
+
+    // Fallback : si aucun pattern n'a matché, ajouter " — en bon état".
+    if (!foundMatch) {
+        positive = label + ' — en bon état';
+    }
+
+    return { positive, negative: label };
+}
+
+// ============================================================
 //  Helper : retourne la liste des modèles applicables à une sous-section.
 //  Priorité : bySubSection > bySection > generic.
 // ============================================================
