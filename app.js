@@ -1,4 +1,4 @@
-﻿document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     
     // --- 0. Sécurité et Utilitaires ---
     
@@ -1158,20 +1158,22 @@
             
             uploadBtn.onclick = () => fileInput.click();
             
-            fileInput.onchange = (e) => {
+            fileInput.onchange = async (e) => {
                 const files = Array.from(e.target.files);
-                files.forEach(file => {
+                if (files.length === 0) return;
+                for (const file of files) {
                     const check = validateFile(file);
                     if (check.valid) {
-                        const url = URL.createObjectURL(file);
+                        // Compresser en data URL pour persister dans localStorage
+                        const dataUrl = await compressImage(file, 1200, 0.75);
                         const store = getActiveSectionPhotos();
                         if (!store[sub.id]) store[sub.id] = [];
-                        store[sub.id].push({ url: url });
+                        store[sub.id].push({ url: dataUrl });
                         saveAppState();
                     } else {
                         showToast(check.error, 'error');
                     }
-                });
+                }
                 renderGallery();
                 fileInput.value = '';
             };
@@ -1766,7 +1768,7 @@ Réponds en français.`;
                 }
             };
             reader.readAsDataURL(file);
-            document.body.removeChild(fileInput);
+            // fileInput already removed in onchange handler above
         };
 
         fileInput.click();
@@ -2225,9 +2227,15 @@ Réponds en français.`;
                                     <div style="font-size: 0.88rem; color: #78350f; margin-top: 6px;"><strong>Suggestion :</strong> ${reco}</div>
                                 </div>`;
                         } else if (state === 'conforme') {
-                            infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #059669;">✅ ${field.label} — <em>Conforme</em></li>`;
+                            // Pour les champs conformes, on affiche la formulation positive
+                            // (cohérent avec le dropdown vu par l'inspecteur). Sinon on aurait
+                            // "✅ <défaut hypothétique> — Conforme" qui est contradictoire.
+                            const conformeLabel = (typeof generateFieldVariants === 'function')
+                                ? generateFieldVariants(field.label).positive
+                                : field.label;
+                            infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #059669;">✅ ${sanitizeHTML(conformeLabel)} — <em>Conforme</em></li>`;
                         } else if (state === 'na') {
-                            infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #94a3b8;">➖ ${field.label} — <em>Non applicable</em></li>`;
+                            infoHtml += `<li style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #94a3b8;">➖ ${sanitizeHTML(field.label)} — <em>Non applicable</em></li>`;
                         }
                     }
                 });
@@ -2426,13 +2434,18 @@ Réponds en français.`;
     function resetInspection() {
         if (!confirm('⚠️ Êtes-vous sûr de vouloir démarrer une nouvelle inspection ?\nToutes les données actuelles seront effacées.')) return;
         localStorage.removeItem('kzo_inspection_data');
-        inspectionData.clientInfo = {};
-        inspectionData.fieldStates = {};
-        inspectionData.comments = {};
-        inspectionData.sectionComments = {};
-        inspectionData.sectionPhotos = {};
+        // Réinitialiser clientInfo avec la structure attendue (évite crash sur .names)
+        inspectionData.clientInfo = {
+            inspectorName: localStorage.getItem('inspectpro_inspector_name') || '',
+            names: [''],
+            name: '',
+            address: '',
+            coverPhotoUrl: null,
+            signatureUrl: null,
+            sealUrl: null
+        };
         inspectionData.id = 'KZO-' + Date.now().toString().slice(-5);
-        // Reset unités
+        // Reset unités (les proxies fieldStates/comments/etc. pointent vers units[0])
         inspectionData.units = [
             { id: 'unit_1', name: 'Unité 1', fieldStates: {}, comments: {}, sectionComments: {}, sectionPhotos: {} }
         ];
